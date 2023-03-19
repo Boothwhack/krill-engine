@@ -45,14 +45,10 @@ const PLAYER_MOVE_SPEED: f32 = 4.0;
 
 impl Game {
     fn update(&mut self, elapsed: Duration) {
-        /*self.player.position += Vec2::new(
-            (if self.input.move_left { -1.0 } else { 0.0 }) +
-                (if self.input.move_right { 1.0 } else { 0.0 }),
-            (if self.input.move_down { -1.0 } else { 0.0 }) +
-                (if self.input.move_up { 1.0 } else { 0.0 }),
-        ) * PLAYER_MOVE_SPEED * elapsed.as_secs_f32()*/
-
-        let mut position = self.world.component::<Position>(self.player).unwrap().clone();
+        let mut position = match self.world.component::<Position>(self.player) {
+            Some(position) => position.clone(),
+            None => Position::default(),
+        };
         let input = self.world.component::<InputState>(self.player).unwrap();
 
         position.pos += Vec2::new(

@@ -1,18 +1,26 @@
-mod render;
-
 use std::time::{Duration, SystemTime};
+
 use winit::event::{Event, VirtualKeyCode, WindowEvent};
 use winit::event::ElementState::Pressed;
 use winit::event_loop::EventLoop;
 use winit::window::WindowBuilder;
 
+mod ecs;
+mod engine;
+mod events;
+mod genvec;
+mod render;
+
 type Vec2 = nalgebra::Vector2<f32>;
 
-struct Player {
-    position: Vec2,
+struct Player;
+
+#[derive(Default, Clone, Debug)]
+struct Position {
+    pos: Vec2,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, Debug)]
 struct InputState {
     move_up: bool,
     move_down: bool,
@@ -21,18 +29,15 @@ struct InputState {
 }
 
 struct Game {
-    player: Player,
-    input: InputState,
+    world: ecs::World,
+    player: ecs::EntityHandle,
 }
 
 impl Default for Game {
     fn default() -> Self {
-        Game {
-            player: Player {
-                position: Vec2::new(0.0, 0.0)
-            },
-            input: InputState::default(),
-        }
+        let mut world = ecs::World::default();
+        let player = world.new_entity();
+        Game { world, player }
     }
 }
 
@@ -40,17 +45,31 @@ const PLAYER_MOVE_SPEED: f32 = 4.0;
 
 impl Game {
     fn update(&mut self, elapsed: Duration) {
-        self.player.position += Vec2::new(
+        /*self.player.position += Vec2::new(
             (if self.input.move_left { -1.0 } else { 0.0 }) +
                 (if self.input.move_right { 1.0 } else { 0.0 }),
             (if self.input.move_down { -1.0 } else { 0.0 }) +
                 (if self.input.move_up { 1.0 } else { 0.0 }),
-        ) * PLAYER_MOVE_SPEED * elapsed.as_secs_f32()
-    }
-    fn render(&self, frame: &mut render::Frame) {
-        let mut primary_pass = frame.begin_render_pass();
+        ) * PLAYER_MOVE_SPEED * elapsed.as_secs_f32()*/
 
-        frame.submit_render_pass(primary_pass);
+        let mut position = self.world.component::<Position>(self.player).unwrap().clone();
+        let input = self.world.component::<InputState>(self.player).unwrap();
+
+        position.pos += Vec2::new(
+            (if input.move_left { -1.0 } else { 0.0 }) +
+                (if input.move_right { 1.0 } else { 0.0 }),
+            (if input.move_down { -1.0 } else { 0.0 }) +
+                (if input.move_up { 1.0 } else { 0.0 }),
+        ) * PLAYER_MOVE_SPEED * elapsed.as_secs_f32();
+
+        self.world.attach(self.player, position);
+    }
+
+    fn render(&self) -> Vec<render::RenderPass> {
+        /*let mut primary_pass = frame.begin_render_pass();
+
+        frame.submit_render_pass(primary_pass);*/
+        vec!()
     }
 }
 
@@ -58,7 +77,7 @@ fn main() {
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new().build(&event_loop).unwrap();
 
-    let mut render_api = render::RenderApi::new(&window);
+    let mut render_api = render::Renderer::new(&window);
     let size = window.inner_size();
     render_api.configure_surface(size.width, size.height);
 
@@ -79,13 +98,15 @@ fn main() {
                 WindowEvent::KeyboardInput { input, .. } => {
                     if let Some(keycode) = input.virtual_keycode {
                         let active = input.state == Pressed;
+                        let mut input = game.world.component::<InputState>(game.player).unwrap().clone();
                         match keycode {
-                            VirtualKeyCode::Up => game.input.move_up = active,
-                            VirtualKeyCode::Down => game.input.move_down = active,
-                            VirtualKeyCode::Left => game.input.move_left = active,
-                            VirtualKeyCode::Right => game.input.move_right = active,
+                            VirtualKeyCode::Up => input.move_up = active,
+                            VirtualKeyCode::Down => input.move_down = active,
+                            VirtualKeyCode::Left => input.move_left = active,
+                            VirtualKeyCode::Right => input.move_right = active,
                             _ => (),
                         }
+                        game.world.attach(game.player, input);
                     }
                 }
                 _ => (),
@@ -100,7 +121,7 @@ fn main() {
             }
             Event::RedrawRequested(window_id) if window_id == window.id() => {
                 let mut frame = render_api.begin_frame().unwrap();
-                game.render(&mut frame);
+                game.render();
                 render_api.submit_frame(frame);
             }
             _ => (),

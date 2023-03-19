@@ -1,100 +1,69 @@
-use wgpu::{Adapter, Backends, Device, DeviceDescriptor, Instance, InstanceDescriptor, PowerPreference, PresentMode, Queue, RequestAdapterOptions, Surface, SurfaceConfiguration, SurfaceError, SurfaceTexture, TextureUsages};
+use wgpu::{DeviceDescriptor, RequestAdapterOptions};
 
-pub struct RenderApi {
-    instance: Instance,
-    surface: Surface,
-    adapter: Adapter,
-    device: Device,
-    queue: Queue,
+use crate::genvec::{GenVec, Handle};
+
+pub struct Pipeline {}
+
+pub struct Buffer {
+    buffer: wgpu::Buffer,
 }
 
-#[derive(Debug)]
-pub enum FrameError {
-    Suboptimal,
-    SurfaceError(SurfaceError),
+pub struct Renderer {
+    instance: wgpu::Instance,
+    adapter: wgpu::Adapter,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    surface: wgpu::Surface,
+    surface_config: wgpu::SurfaceConfiguration,
+
+    pipelines: GenVec<Pipeline>,
+    buffers: GenVec<Buffer>,
 }
 
-impl RenderApi {
-    pub fn new<W>(window: &W) -> RenderApi
+impl Renderer {
+    async fn new<W>(window: &W, width: u32, height: u32) -> Renderer
         where W: raw_window_handle::HasRawWindowHandle + raw_window_handle::HasRawDisplayHandle {
-        let instance = Instance::default();
-        let surface = unsafe { instance.create_surface(window) }.unwrap();
-        let adapter = futures::executor::block_on(instance.request_adapter(&RequestAdapterOptions {
-            compatible_surface: Some(&surface),
-            ..Default::default()
-        })).unwrap();
-        let (device, queue) = futures::executor::block_on(adapter.request_device(&DeviceDescriptor::default(), None)).unwrap();
+        let instance = wgpu::Instance::default();
+        let adapter = instance.request_adapter(&RequestAdapterOptions::default())
+            .await
+            .expect("adapter");
+        let (device, queue) = adapter.request_device(&DeviceDescriptor::default(), None)
+            .await
+            .expect("device");
 
-        RenderApi { instance, surface, adapter, device, queue }
-    }
+        let surface = unsafe { instance.create_surface(window) }.expect("surface");
+        let surface_config = surface.get_default_config(&adapter, width, height).expect("default surface configuration");
+        surface.configure(&device, &surface_config);
 
-    pub fn configure_surface(&mut self, width: u32, height: u32) {
-        let capabilities = self.surface.get_capabilities(&self.adapter);
-        let format = capabilities
-            .formats
-            .iter()
-            .find(|it| it.describe().srgb)
-            .unwrap_or(&capabilities.formats[0])
-            .clone();
-
-        let config = SurfaceConfiguration {
-            usage: TextureUsages::RENDER_ATTACHMENT,
-            format,
-            width,
-            height,
-            present_mode: PresentMode::AutoVsync,
-            alpha_mode: Default::default(),
-            view_formats: vec!(),
-        };
-        self.surface.configure(&self.device, &config);
-    }
-
-    pub fn begin_frame(&self) -> Result<Frame, FrameError> {
-        let surface_texture = self.surface.get_current_texture().map_err(FrameError::SurfaceError)?;
-        if surface_texture.suboptimal {
-            return Err(FrameError::Suboptimal);
-        }
-
-        Ok(Frame {
-            surface_texture,
-            render_passes: vec!(),
-        })
-    }
-
-    pub fn submit_frame(&mut self, frame: Frame) {
-        frame.surface_texture.present();
-    }
-}
-
-pub struct Frame {
-    surface_texture: SurfaceTexture,
-    render_passes: Vec<RenderPass>,
-}
-
-impl Frame {
-    pub fn begin_render_pass(&self) -> RenderPass {
-        RenderPass {
-            commands: vec!(),
+        Renderer {
+            instance,
+            adapter,
+            device,
+            queue,
+            surface,
+            surface_config,
+            pipelines: Default::default(),
+            buffers: Default::default(),
         }
     }
 
-    pub fn submit_render_pass(&mut self, render_pass: RenderPass) {
-        self.render_passes.push(render_pass);
-    }
+    fn create_pipeline(&self, )
 }
 
-pub enum ColorAttachmentSource {
-    SurfaceTexture,
+#[derive(Default)]
+pub struct Color {
+    pub r: f32,
+    pub g: f32,
+    pub b: f32,
+    pub a: f32,
 }
 
-pub struct ColorAttachment {
-    color: wgpu::Color,
-    source: ColorAttachmentSource,
+pub enum Target {
+    ScreenTarget { clear: Option<Color> },
 }
 
-pub struct RenderPass<'a> {
-    color_attachments: &'a [Option<ColorAttachment>],
-    commands: Vec<Command>,
+pub struct RenderPass {
+    pub pipeline: Handle<Pipeline>,
+    pub vertex_buffers: Vec<Handle<Buffer>>,
+    pub targets: Vec<Target>,
 }
-
-enum Command {}

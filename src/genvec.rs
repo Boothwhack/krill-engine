@@ -60,12 +60,23 @@ impl<T> Entry<T> {
     }
 }
 
-#[derive(Copy, Clone)]
 pub struct Handle<T> {
     index: usize,
     generation: u32,
     phantom: PhantomData<T>,
 }
+
+impl<T> Clone for Handle<T> {
+    fn clone(&self) -> Self {
+        Handle {
+            index: self.index,
+            generation: self.generation,
+            phantom: PhantomData::default(),
+        }
+    }
+}
+
+impl<T> Copy for Handle<T> {}
 
 impl<T> GenVec<T> {
     pub fn new() -> Self {
@@ -97,31 +108,31 @@ impl<T> GenVec<T> {
         }
     }
 
-    fn get_entry_mut(&mut self, handle: Handle<T>) -> Option<&mut Entry<T>> {
+    fn get_entry_mut(&mut self, handle: &Handle<T>) -> Option<&mut Entry<T>> {
         self.storage.get_mut(handle.index)
             .filter(|entry| entry.is_generation(handle.generation))
     }
 
-    fn get_entry(&self, handle: Handle<T>) -> Option<&Entry<T>> {
+    fn get_entry(&self, handle: &Handle<T>) -> Option<&Entry<T>> {
         self.storage.get(handle.index)
             .filter(|entry| entry.is_generation(handle.generation))
     }
 
-    pub fn get(&self, handle: Handle<T>) -> Option<&T> {
+    pub fn get(&self, handle: &Handle<T>) -> Option<&T> {
         self.get_entry(handle).and_then(Entry::get)
     }
 
-    pub fn get_mut(&mut self, handle: Handle<T>) -> Option<&mut T> {
+    pub fn get_mut(&mut self, handle: &Handle<T>) -> Option<&mut T> {
         self.get_entry_mut(handle).and_then(Entry::get_mut)
     }
 
-    pub fn remove(&mut self, handle: Handle<T>) {
+    pub fn remove(&mut self, handle: &Handle<T>) {
         if let Some(entry) = self.get_entry_mut(handle) {
             entry.remove();
         }
     }
 
-    pub fn take(&mut self, handle: Handle<T>) -> Option<T> {
+    pub fn take(&mut self, handle: &Handle<T>) -> Option<T> {
         self.get_entry_mut(handle).and_then(Entry::take)
     }
 }

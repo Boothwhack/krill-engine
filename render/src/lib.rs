@@ -1,9 +1,11 @@
 use std::iter::once;
-use std::mem::size_of;
+use std::mem::{size_of, size_of_val};
 use std::ops::Range;
-use wgpu::{BufferDescriptor, BufferUsages, include_wgsl, Label, LoadOp, Operations, RenderPassColorAttachment, RenderPassDescriptor, RequestAdapterOptions, ShaderModuleDescriptor, TextureViewDescriptor, vertex_attr_array, VertexBufferLayout};
+use utils::genvec::*;
 
-use crate::genvec::{GenVec, Handle};
+use wgpu::{BufferDescriptor, include_wgsl, Label, LoadOp, Operations, RenderPassColorAttachment, RenderPassDescriptor, RequestAdapterOptions, ShaderModuleDescriptor, TextureViewDescriptor, vertex_attr_array, VertexBufferLayout};
+
+pub use wgpu::BufferUsages;
 
 pub struct Pipeline {
     pipeline: wgpu::RenderPipeline,
@@ -23,7 +25,6 @@ struct Resources {
 
 pub struct WGPUContext {
     instance: wgpu::Instance,
-    adapter: wgpu::Adapter,
 }
 
 impl WGPUContext {
@@ -33,31 +34,30 @@ impl WGPUContext {
         for adapter in instance.enumerate_adapters(wgpu::Backends::all()) {
             println!("  {:?}", adapter.get_info());
         }
-        let adapter = instance.request_adapter(&RequestAdapterOptions::default())
-            .await?;
 
-        Some(WGPUContext { instance, adapter })
+        Some(WGPUContext { instance })
     }
 
-    pub async fn request_device(&self) -> Result<DeviceContext, wgpu::RequestDeviceError> {
-        let (device, queue) = self.adapter.request_device(
+    pub async fn request_device(&self, surface: &SurfaceContext) -> Result<DeviceContext, wgpu::RequestDeviceError> {
+        let adapter = self.instance.request_adapter(&RequestAdapterOptions {
+            compatible_surface: Some(&surface.surface),
+            ..Default::default()
+        }).await.expect("viable adapter");
+        println!("Got adapter: {:?}", adapter.get_info());
+        let (device, queue) = adapter.request_device(
             &wgpu::DeviceDescriptor::default(),
             None,
         ).await?;
-        Ok(DeviceContext { device, queue, resources: Resources::default() })
+        Ok(DeviceContext { adapter, device, queue, resources: Resources::default() })
     }
 
-    pub fn create_surface<W>(&self, window: &W, device_context: &DeviceContext, width: u32, height: u32) -> SurfaceContext
+    pub fn create_surface<W>(&self, window: &W) -> SurfaceContext
         where W: raw_window_handle::HasRawWindowHandle + raw_window_handle::HasRawDisplayHandle {
         let surface = unsafe { self.instance.create_surface(window) }.expect("surface");
-        let mut surface_config = surface.get_default_config(&self.adapter, width, height).expect("default surface configuration");
-        println!("Surface capabilities: {:?}", surface.get_capabilities(&self.adapter));
-        println!("Default surface configuration: {:?}", surface_config);
-        surface_config.format = wgpu::TextureFormat::Rgba8UnormSrgb;
-        surface.configure(&device_context.device, &surface_config);
+
         SurfaceContext {
             surface,
-            surface_config,
+            surface_config: None,
         }
     }
 }
@@ -67,6 +67,7 @@ pub struct VertexShader<'a> {
 }
 
 pub struct DeviceContext {
+    adapter: wgpu::Adapter,
     device: wgpu::Device,
     queue: wgpu::Queue,
     resources: Resources,
@@ -89,12 +90,13 @@ impl DeviceContext {
         self.resources.buffers.add(buffer)
     }
 
-    pub fn resize_buffer(&mut self, buffer: &Handle<Buffer>, size: usize) {
-        let mut buffer = self.resources.buffers.get_mut(buffer)
-            .expect("cannot resize deleted buffer");
+    pub fn get_buffer(&self, buffer: &Handle<Buffer>) -> Option<&Buffer> {
+        self.resources.buffers.get(buffer)
+    }
 
+    fn ensure_buffer_capacity(device: &wgpu::Device, buffer: &mut Buffer, size: usize) {
         if buffer.size < size {
-            buffer.buffer = self.device.create_buffer(&BufferDescriptor {
+            buffer.buffer = device.create_buffer(&BufferDescriptor {
                 label: Label::default(),
                 size: size as _,
                 usage: buffer.usage,
@@ -102,6 +104,13 @@ impl DeviceContext {
             });
             buffer.size = size;
         }
+    }
+
+    pub fn resize_buffer(&mut self, buffer: &Handle<Buffer>, size: usize) {
+        let buffer = self.resources.buffers.get_mut(buffer)
+            .expect("cannot resize deleted buffer");
+
+        Self::ensure_buffer_capacity(&self.device, buffer, size);
     }
 
     pub fn create_pipeline(&mut self, vertex_shader: &VertexShader /* TODO: fragment_shader */) -> Handle<Pipeline> {
@@ -117,7 +126,7 @@ impl DeviceContext {
                 module: &fragment_shader_module,
                 entry_point: "fs_main",
                 targets: &[Some(wgpu::ColorTargetState {
-                    format:wgpu::TextureFormat::Rgba8UnormSrgb,
+                    format: wgpu::TextureFormat::Bgra8UnormSrgb,
                     blend: None,
                     write_mask: wgpu::ColorWrites::all(),
                 })],
@@ -164,7 +173,7 @@ impl DeviceContext {
 
 pub struct SurfaceContext {
     surface: wgpu::Surface,
-    surface_config: wgpu::SurfaceConfiguration,
+    surface_config: Option<wgpu::SurfaceConfiguration>,
 }
 
 impl SurfaceContext {
@@ -173,6 +182,15 @@ impl SurfaceContext {
             surface_texture: self.surface.get_current_texture()
                 .expect("current surface texture for frame"),
         }
+    }
+
+    pub fn configure(&mut self, device: &DeviceContext, width: u32, height: u32) {
+        let mut surface_config = self.surface.get_default_config(&device.adapter, width, height).expect("default surface configuration");
+        println!("Surface capabilities: {:?}", self.surface.get_capabilities(&device.adapter));
+        println!("Default surface configuration: {:?}", surface_config);
+        // surface_config.format = wgpu::TextureFormat::Rgba8UnormSrgb;
+        self.surface.configure(&device.device, &surface_config);
+        self.surface_config = Some(surface_config);
     }
 
     pub fn present(&self, frame: SurfaceFrame) {
@@ -244,7 +262,7 @@ pub struct Color {
 
 impl Color {
     pub fn new(r: f32, g: f32, b: f32, a: f32) -> Color {
-        Color {r,g,b,a}
+        Color { r, g, b, a }
     }
 }
 

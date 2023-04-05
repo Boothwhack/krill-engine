@@ -1,0 +1,12 @@
+[package]
+name = "render"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+futures = { version = "0.3", features = ["executor"] }
+raw-window-handle = "0.5"
+utils = { path = "../utils" }
+wgpu = "0.15"

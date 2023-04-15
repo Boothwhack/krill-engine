@@ -6,7 +6,16 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+assets = { path = "../assets" }
+async-trait = "0.1"
 futures = { version = "0.3", features = ["executor"] }
 raw-window-handle = "0.5"
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "1.0"
+toml = "0.7"
 utils = { path = "../utils" }
 wgpu = "0.15"
+
+[dev-dependencies]
+winit = "0.28"
+tokio = { version = "1.27", features = ["full"] }

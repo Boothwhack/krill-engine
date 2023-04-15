@@ -1,3 +1,5 @@
+use std::any::TypeId;
+use std::collections::HashMap;
 use std::mem::size_of_val;
 use std::slice::from_raw_parts;
 
@@ -6,36 +8,50 @@ use winit::dpi::PhysicalSize;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::EventLoop;
 use winit::window::WindowBuilder;
-
+use assets::{AssetPipeline, AssetPipelines};
+use assets::path::AssetPath;
+use assets::source::desktop_fs::DirectoryAssetSource;
 use render::{BufferUsages, Color, RenderPass, Target, VertexShader, WGPUContext};
+use render::pipeline::{RenderPipelineAsset, RenderPipelineAssetPipeline};
 
 const VERTICES: [f32; 2 * 3] = [
-    0.5, -0.5,
-    0.0, 0.5,
     -0.5, -0.5,
+    0.0, 0.5,
+    0.5, -0.5,
 ];
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new().build(&event_loop).unwrap();
-    let PhysicalSize { width, height } = window.inner_size();
 
-    let context = block_on(WGPUContext::new())
-        .expect("WGPU context");
+    let context = WGPUContext::new().await.expect("WGPU context");
     let mut surface = context.create_surface(&window);
-    let mut device = block_on(context.request_device(&surface))
-        .expect("WGPU device");
-    surface.configure(&device, width, height);
+    let mut device = context.request_device(&surface).await.expect("WGPU device");
 
-    let pipeline = device.create_pipeline(&VertexShader {
-        source: include_str!("triangle.wgsl"),
-    });
+    let PhysicalSize { width, height } = window.inner_size();
+    surface.configure(&device, width , height);
+
+    let mut asset_pipelines = HashMap::new();
+    asset_pipelines.insert(TypeId::of::<RenderPipelineAsset>(), Box::new(RenderPipelineAssetPipeline) as _);
+    let asset_pipelines = AssetPipelines::new(asset_pipelines);
+
+    let asset_source = DirectoryAssetSource::new("assets");
+
+    let pipeline_asset = asset_pipelines
+        .load_asset(AssetPath::new("/triangle.pipeline").unwrap(), TypeId::of::<RenderPipelineAsset>(), &asset_source)
+        .await
+        .expect("triangle render pipeline")
+        .downcast::<RenderPipelineAsset>()
+        .expect("render pipeline asset");
+
+    let pipeline = device.create_pipeline(*pipeline_asset);
     let buffer = device.create_buffer(size_of_val(&VERTICES), BufferUsages::VERTEX | BufferUsages::COPY_DST);
 
     let data = unsafe {
         from_raw_parts(VERTICES.as_ptr() as *const u8, size_of_val(&VERTICES))
     };
-    device.submit_buffer(&buffer, 0, data);
+    device.submit_buffer(buffer, 0, data);
 
     event_loop.run(move |event, _, control_flow| {
         control_flow.set_poll();
@@ -48,7 +64,7 @@ fn main() {
                 let frame = surface.get_frame();
 
                 let mut encoder = device.command_encoder(&frame);
-                encoder.render_pass(&RenderPass {
+                encoder.render_pass(RenderPass {
                     pipeline,
                     vertices: 0..3,
                     targets: vec![Target::ScreenTarget {

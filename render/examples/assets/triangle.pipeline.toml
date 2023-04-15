@@ -1,0 +1,18 @@
+[[shader-modules]]
+name = "triangle"
+path = "triangle.wgsl"
+
+[vertex-shader]
+shader-module = "triangle"
+entrypoint = "vs_main"
+
+[[vertex-shader.buffers]]
+step-mode = "vertex"
+attributes = [{ format = "f32x2" }]
+
+[fragment-shader]
+shader-module = "triangle"
+entrypoint = "fs_main"
+
+[[fragment-shader.targets]]
+format = "bgra8-unorm-srgb"

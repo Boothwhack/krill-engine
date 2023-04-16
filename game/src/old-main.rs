@@ -1,4 +1,4 @@
-use std::any::TypeId;
+/*use std::any::TypeId;
 use std::collections::HashMap;
 use std::mem::size_of_val;
 use std::slice::from_raw_parts;
@@ -12,17 +12,6 @@ use engine::render::{Buffer, BufferUsages, Color, DeviceContext, Handle, Pipelin
 use engine::render::pipeline::{RenderPipelineAsset, RenderPipelineAssetPipeline};
 use engine::resource::ResourceList;
 use engine::winit_surface::{RunWinitSurfaceExt, SurfaceEvent, WGPURenderExt, WGPURenderResource, WithWinitSurfaceExt};
-
-struct TriangleResource {
-    pipeline: Handle<Pipeline>,
-    buffer: Handle<Buffer>,
-}
-
-const VERTICES: [f32; 2 * 3] = [
-    -0.5, -0.5,
-    0.0, 0.5,
-    0.5, -0.5,
-];
 
 #[tokio::main]
 async fn main() {
@@ -77,4 +66,4 @@ async fn main() {
             }
             SurfaceEvent::Close => {}
         });
-}
+}*/

@@ -1,5 +1,6 @@
 use frunk::hlist::{HList, Plucker, Sculptor, Selector};
-pub use frunk::HList;
+pub use frunk;
+use frunk::HList;
 use frunk::{HCons, hlist, HNil, ToMut, ToRef};
 
 // wraps a non-empty HList
@@ -10,6 +11,12 @@ pub struct Resources<H, T: HList> {
 impl<H> Resources<H, HNil> {
     pub fn new(resource: H) -> Resources<H, HNil> {
         Resources { resources: hlist![resource] }
+    }
+}
+
+impl<H, T: HList> Resources<H, T> {
+    pub fn pack(list: HCons<H, T>) -> Self {
+        Resources { resources: list }
     }
 }
 

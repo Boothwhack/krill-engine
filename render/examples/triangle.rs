@@ -10,7 +10,7 @@ use winit::event_loop::EventLoop;
 use winit::window::WindowBuilder;
 use assets::{AssetPipeline, AssetPipelines};
 use assets::path::AssetPath;
-use assets::source::desktop_fs::DirectoryAssetSource;
+use assets::desktop_fs::desktop_fs::DirectoryAssetSource;
 use render::{BufferUsages, Color, RenderPass, Target, VertexShader, WGPUContext};
 use render::pipeline::{RenderPipelineAsset, RenderPipelineAssetPipeline};
 

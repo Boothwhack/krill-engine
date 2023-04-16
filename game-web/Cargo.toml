@@ -1,0 +1,16 @@
+[package]
+name = "game-web"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+assets = { path = "../assets", features = ["web_request"] }
+engine = { path = "../engine" }
+game = { path = "../game" }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"

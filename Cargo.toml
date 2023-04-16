@@ -4,6 +4,7 @@ members = [
     "ecs",
     "engine",
     "game",
+    "game-web",
     "render",
     "utils",
 ]

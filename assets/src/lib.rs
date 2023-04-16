@@ -26,6 +26,8 @@ pub enum LoadAssetError {
     NotFound(AssetPath),
     #[error("{}", .0)]
     InvalidPath(InvalidCharacters),
+    #[error("unknown error loading asset: {:?}", .0)]
+    UnknownError(AssetPath),
     #[error("pipeline error: {}", .0)]
     Other(Box<dyn Error>),
 }

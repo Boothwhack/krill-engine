@@ -27,7 +27,7 @@ const VERTICES: [f32; 2 * 3] = [
 #[tokio::main]
 async fn main() {
     ProcessBuilder::new(ProcessInfo)
-        .with_canvas_surface()
+        .with_winit_surface()
         .with_wgpu_render().await
         .setup_async(|mut resources| async move {
             let mut asset_pipelines = HashMap::new();

@@ -8,4 +8,5 @@ edition = "2021"
 [dependencies]
 engine = { path = "../engine" }
 futures = { version = "0.3", features = ["executor"] }
+tokio = { version = "1.27", features = ["full"] }
 winit = "0.28"

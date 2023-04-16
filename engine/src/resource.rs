@@ -1,6 +1,6 @@
-use frunk::hlist::{HList, Sculptor, Selector};
+use frunk::hlist::{HList, Plucker, Sculptor, Selector};
 pub use frunk::HList;
-use frunk::{hlist, HNil, ToMut, ToRef};
+use frunk::{HCons, hlist, HNil, ToMut, ToRef};
 
 // wraps a non-empty HList
 pub struct Resources<H, T: HList> {
@@ -22,6 +22,8 @@ pub trait ResourceList {
     fn list(&self) -> &Self::Resources;
 
     fn list_mut(&mut self) -> &mut Self::Resources;
+
+    fn unpack(self) -> Self::Resources;
 
     fn get<R, I>(&self) -> &R
         where Self::Resources: Selector<R, I> {
@@ -60,4 +62,14 @@ impl<Head, Tail: HList> ResourceList for Resources<Head, Tail> {
     fn list_mut(&mut self) -> &mut Self::Resources {
         &mut self.resources
     }
+
+    fn unpack(self) -> Self::Resources {
+        self.resources
+    }
 }
+
+pub trait ResourceListHas<S, I>: ResourceList {}
+
+impl<T, S, I> ResourceListHas<S, I> for T
+    where T: ResourceList,
+          T::Resources: Selector<S, I> {}

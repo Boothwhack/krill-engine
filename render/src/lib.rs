@@ -8,7 +8,8 @@ use std::ops::Range;
 use wgpu::{BufferDescriptor, ColorTargetState, FragmentState, include_wgsl, Label, LoadOp, Operations, RenderPassColorAttachment, RenderPassDescriptor, RenderPipelineDescriptor, RequestAdapterOptions, ShaderModuleDescriptor, ShaderSource, TextureViewDescriptor, vertex_attr_array, VertexState};
 
 pub use wgpu::BufferUsages;
-use utils::{CompactList, Handle};
+use utils::{CompactList};
+pub use utils::Handle;
 use crate::pipeline::RenderPipelineAsset;
 use crate::pipeline::serial::{TargetFormat, VertexFormatDefinition, VertexShaderStepMode};
 

@@ -360,9 +360,13 @@ version = "0.1.0"
 name = "engine"
 version = "0.1.0"
 dependencies = [
+ "assets",
+ "async-trait",
  "ecs",
  "frunk",
+ "raw-window-handle",
  "render",
+ "winit",
 ]
 
 [[package]]
@@ -567,6 +571,7 @@ version = "0.1.0"
 dependencies = [
  "engine",
  "futures",
+ "tokio",
  "winit",
 ]
 

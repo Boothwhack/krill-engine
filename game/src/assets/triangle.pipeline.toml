@@ -15,4 +15,4 @@ shader-module = "triangle"
 entrypoint = "fs_main"
 
 [[fragment-shader.targets]]
-format = "bgra8-unorm-srgb"
+format = "rgba8-unorm-srgb"

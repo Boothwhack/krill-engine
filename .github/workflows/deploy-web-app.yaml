@@ -5,8 +5,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - run: cd game-web && npm ci
-      - run: cd game-web && npm run build
+      - working-directory: game-web
+        run: npm ci
+      - working-directory: game-web
+        run: npm run build
       - name: Upload Github Pages artifact
         uses: actions/upload-pages-artifact@v1
         with:

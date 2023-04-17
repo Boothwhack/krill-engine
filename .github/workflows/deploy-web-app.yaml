@@ -1,0 +1,24 @@
+name: Deploy WASM web app to Github Pages
+on: [push]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - run: cd game-web && npm ci
+      - run: cd game-web && npm run build
+      - name: Upload Github Pages artifact
+        uses: actions/upload-pages-artifact
+        with:
+          path: game-web/dist
+  deploy:
+    needs: build
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to Github Pages
+        uses: actions/deploy-pages@v1

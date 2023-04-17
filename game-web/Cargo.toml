@@ -10,7 +10,19 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 assets = { path = "../assets", features = ["web_request"] }
+console_error_panic_hook = "0.1"
+console_log = "1.0"
 engine = { path = "../engine" }
 game = { path = "../game" }
+log = "0.4"
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = [
+    "Document",
+    "Element",
+    "Gpu",
+    "Location",
+    "Window",
+] }
+wgpu = { version = "0.15", features = ["webgl"] }
+winit = "0.28"

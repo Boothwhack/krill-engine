@@ -1,6 +1,7 @@
 pub mod pipeline;
 
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::iter::once;
 use std::mem::{size_of};
 use std::ops::Range;
@@ -34,12 +35,23 @@ pub struct WGPUContext {
 }
 
 impl WGPUContext {
-    pub async fn new() -> Option<Self> {
-        let instance = wgpu::Instance::default();
+    // enumerate_adapters is not available in wasm environments
+    #[cfg(not(target_family = "wasm"))]
+    fn print_adapters(instance: &wgpu::Instance) {
         println!("Adapters:");
         for adapter in instance.enumerate_adapters(wgpu::Backends::all()) {
             println!("  {:?}", adapter.get_info());
         }
+    }
+
+    #[cfg(target_family = "wasm")]
+    fn print_adapters(_: &wgpu::Instance) {}
+
+    pub async fn new() -> Option<Self> {
+        let instance = wgpu::Instance::default();
+        WGPUContext::print_adapters(&instance);
+
+        log::info!("Got WGPU instance.");
 
         Some(WGPUContext { instance })
     }
@@ -49,9 +61,13 @@ impl WGPUContext {
             compatible_surface: Some(&surface.surface),
             ..Default::default()
         }).await.expect("viable adapter");
-        println!("Got adapter: {:?}", adapter.get_info());
+        log::info!("Got adapter: {:?}", adapter.get_info());
         let (device, queue) = adapter.request_device(
-            &wgpu::DeviceDescriptor::default(),
+            &wgpu::DeviceDescriptor {
+                limits: wgpu::Limits::downlevel_webgl2_defaults(),
+
+                ..Default::default()
+            },
             None,
         ).await?;
         Ok(DeviceContext { adapter, device, queue, resources: Resources::default() })
@@ -59,6 +75,7 @@ impl WGPUContext {
 
     pub fn create_surface<W>(&self, window: &W) -> SurfaceContext
         where W: raw_window_handle::HasRawWindowHandle + raw_window_handle::HasRawDisplayHandle {
+        log::info!("Creating surface...");
         let surface = unsafe { self.instance.create_surface(window) }.expect("surface");
 
         SurfaceContext {
@@ -140,7 +157,7 @@ impl DeviceContext {
         let modules: HashMap<String, _> = asset.shader_modules
             .into_iter()
             .map(|(name, source)| {
-                let shader =self.device.create_shader_module(ShaderModuleDescriptor {
+                let shader = self.device.create_shader_module(ShaderModuleDescriptor {
                     label: Some(&name),
                     source: ShaderSource::Wgsl(source.into()),
                 });

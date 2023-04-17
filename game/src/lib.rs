@@ -2,10 +2,10 @@ use std::any::TypeId;
 use std::collections::HashMap;
 use std::mem::size_of_val;
 use std::slice::from_raw_parts;
+use engine::asset_resource::AssetSourceResource;
 use engine::assets::AssetPipelines;
 use engine::assets::path::AssetPath;
-use assets::desktop_fs::desktop_fs::DirectoryAssetSource;
-use engine::process::ProcessBuilder;
+use engine::assets::source::AssetSource;
 use engine::render::{Buffer, BufferUsages, Color, Handle, Pipeline, RenderPass, Target};
 use engine::render::pipeline::{RenderPipelineAsset, RenderPipelineAssetPipeline};
 use engine::resource::frunk::hlist::{HList, Selector};
@@ -23,19 +23,21 @@ const VERTICES: [f32; 2 * 3] = [
     0.5, -0.5,
 ];
 
-pub async fn setup_game<R, I>(mut resources: R) -> R::WithResource<TriangleResource>
+pub async fn setup_game<R, A, IRender, IAssets>(mut resources: R) -> R::WithResource<TriangleResource>
     where R: ResourceList,
-          R::Resources: Selector<WGPURenderResource, I> {
+          A: AssetSource,
+          R::Resources: Selector<WGPURenderResource, IRender>,
+          R::Resources: Selector<AssetSourceResource<A>, IAssets> {
     let asset_pipelines = {
         let mut pipelines = HashMap::new();
         pipelines.insert(TypeId::of::<RenderPipelineAsset>(), Box::new(RenderPipelineAssetPipeline) as _);
         AssetPipelines::new(pipelines)
     };
 
-    let asset_source = DirectoryAssetSource::new("assets");
+    let asset_source: &AssetSourceResource<A> = resources.get();
 
     let pipeline_asset = asset_pipelines
-        .load_asset(AssetPath::new("/triangle.pipeline").unwrap(), TypeId::of::<RenderPipelineAsset>(), &asset_source)
+        .load_asset(AssetPath::new("/triangle.pipeline").unwrap(), TypeId::of::<RenderPipelineAsset>(), asset_source.get())
         .await
         .expect("triangle render pipeline")
         .downcast::<RenderPipelineAsset>()
@@ -57,6 +59,11 @@ pub async fn setup_game<R, I>(mut resources: R) -> R::WithResource<TriangleResou
 pub fn run_game<R, IRender, ITriangle>(event: SurfaceEvent, resources: &mut R)
     where R: HList + Selector<WGPURenderResource, IRender> + Selector<TriangleResource, ITriangle>, {
     match event {
+        SurfaceEvent::Resize { width, height } => {
+            let render: &mut WGPURenderResource = resources.get_mut();
+            let (surface, device) = render.get();
+            surface.configure(device, width, height);
+        }
         SurfaceEvent::Draw => {
             let render: &WGPURenderResource = resources.get();
             let triangle: &TriangleResource = resources.get();

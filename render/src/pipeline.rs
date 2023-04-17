@@ -155,7 +155,7 @@ pub struct RenderPipelineAsset {
     pub(crate) definition: PipelineDefinition,
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl AssetPipeline for RenderPipelineAssetPipeline {
     async fn load_asset(&self, path: AssetPath, source: &dyn AssetSource) -> Result<Box<dyn Any>, LoadAssetError> {
         let path = path.append(".toml");

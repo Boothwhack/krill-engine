@@ -9,7 +9,7 @@ use crate::source::AssetSource;
 pub mod path;
 pub mod source;
 
-#[async_trait]
+#[async_trait(?Send)]
 pub trait AssetPipeline {
     async fn load_asset(&self, path: AssetPath, source: &dyn AssetSource) -> Result<Box<dyn Any>, LoadAssetError>;
 }

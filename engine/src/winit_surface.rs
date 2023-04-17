@@ -1,7 +1,9 @@
+use std::ops::Deref;
 use async_trait::async_trait;
 use frunk::hlist::{Plucker, Selector};
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle};
-use winit::event::Event;
+use winit::dpi::PhysicalSize;
+use winit::event::{Event, WindowEvent};
 use winit::event_loop::EventLoop;
 use winit::window::{Window, WindowBuilder};
 use render::{DeviceContext, SurfaceContext, WGPUContext};
@@ -12,20 +14,50 @@ pub struct SurfaceResource<S> {
     surface: S,
 }
 
+impl<S> SurfaceResource<S> {
+    pub fn surface(&self) -> &S {
+        &self.surface
+    }
+}
+
+pub type WindowSize = PhysicalSize<u32>;
+
+pub trait HasWindow {
+    type Window: HasRawWindowHandle + HasRawDisplayHandle;
+
+    fn window(&self) -> &Self::Window;
+
+    fn size(&self) -> WindowSize;
+}
+
+impl<S> Deref for SurfaceResource<S> {
+    type Target = S;
+
+    fn deref(&self) -> &Self::Target {
+        self.surface()
+    }
+}
+
 pub struct WinitSurface {
     event_loop: EventLoop<()>,
     window: Window,
 }
 
-unsafe impl HasRawWindowHandle for WinitSurface {
-    fn raw_window_handle(&self) -> RawWindowHandle {
-        self.window.raw_window_handle()
+impl WinitSurface {
+    pub fn window(&self) -> &Window {
+        &self.window
     }
 }
 
-unsafe impl HasRawDisplayHandle for WinitSurface {
-    fn raw_display_handle(&self) -> RawDisplayHandle {
-        self.window.raw_display_handle()
+impl HasWindow for WinitSurface {
+    type Window = Window;
+
+    fn window(&self) -> &Self::Window {
+        &self.window
+    }
+
+    fn size(&self) -> WindowSize {
+        self.window.inner_size()
     }
 }
 
@@ -39,7 +71,8 @@ impl<R: ResourceList + Send> WithWinitSurfaceExt<R> for ProcessBuilder<R> {
     fn with_winit_surface(self) -> ProcessBuilder<R::WithResource<WinitSurfaceResource>> {
         self.setup(|resources| {
             let event_loop = EventLoop::new();
-            let window = WindowBuilder::new().build(&event_loop).unwrap();
+            let window = WindowBuilder::new()
+                .build(&event_loop).unwrap();
 
             resources.with_resource(SurfaceResource {
                 surface: WinitSurface { event_loop, window }
@@ -49,6 +82,10 @@ impl<R: ResourceList + Send> WithWinitSurfaceExt<R> for ProcessBuilder<R> {
 }
 
 pub enum SurfaceEvent {
+    Resize {
+        width: u32,
+        height: u32,
+    },
     Draw,
     Close,
 }
@@ -68,10 +105,17 @@ impl<R, I> RunWinitSurfaceExt<R, I> for ProcessBuilder<R>
     fn run<F>(self, mut handler: F) -> !
         where F: FnMut(SurfaceEvent, &mut <R::Resources as Plucker<WinitSurfaceResource, I>>::Remainder) + 'static {
         let resources = self.build().unpack();
+
         let (SurfaceResource { surface }, mut resources): (WinitSurfaceResource, _) = resources.pluck();
         surface.event_loop.run(move |event, _, control_flow| match event {
             Event::RedrawRequested(window_id) if window_id == surface.window.id() => {
                 handler(SurfaceEvent::Draw, &mut resources);
+            }
+            Event::WindowEvent { event, window_id } if window_id == surface.window.id() => match event {
+                WindowEvent::Resized(PhysicalSize { width, height }) => {
+                    handler(SurfaceEvent::Resize { width, height }, &mut resources)
+                }
+                _ => {}
             }
             _ => {}
         })
@@ -89,8 +133,16 @@ impl WGPURenderResource {
         &self.wgpu_context
     }
 
+    pub fn get(&mut self) -> (&mut SurfaceContext, &mut DeviceContext) {
+        (&mut self.surface_context, &mut self.device_context)
+    }
+
     pub fn surface(&self) -> &SurfaceContext {
         &self.surface_context
+    }
+
+    pub fn surface_mut(&mut self) -> &mut SurfaceContext {
+        &mut self.surface_context
     }
 
     pub fn device(&self) -> &DeviceContext {
@@ -105,7 +157,7 @@ impl WGPURenderResource {
 #[async_trait(? Send)]
 pub trait WGPURenderExt<R, I, W>
     where R: ResourceListHas<SurfaceResource<W>, I>,
-          W: HasRawWindowHandle + HasRawDisplayHandle {
+          W: HasWindow {
     async fn with_wgpu_render(self) -> ProcessBuilder<R::WithResource<WGPURenderResource>>;
 }
 
@@ -113,16 +165,17 @@ pub trait WGPURenderExt<R, I, W>
 impl<R, I, W> WGPURenderExt<R, I, W> for ProcessBuilder<R>
     where R: ResourceList,
           R::Resources: Selector<SurfaceResource<W>, I>,
-          W: HasRawWindowHandle + HasRawDisplayHandle {
+          W: HasWindow, {
     async fn with_wgpu_render(self) -> ProcessBuilder<R::WithResource<WGPURenderResource>> {
         self.setup_async(|resources| async move {
             let window: &SurfaceResource<W> = resources.get();
 
             let wgpu_context = WGPUContext::new().await.unwrap();
-            let mut surface_context = wgpu_context.create_surface(&window.surface);
+            let mut surface_context = wgpu_context.create_surface(window.surface.window());
             let device_context = wgpu_context.request_device(&surface_context).await.unwrap();
 
-            surface_context.configure(&device_context, 800 , 600);
+            let size = window.size();
+            surface_context.configure(&device_context, size.width, size.height);
 
             resources.with_resource(WGPURenderResource {
                 wgpu_context,

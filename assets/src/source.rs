@@ -13,7 +13,7 @@ pub trait AssetSource: Sync {
     async fn open_asset_file(&self, path: &AssetPath) -> Result<Box<dyn AssetReader>, LoadAssetError>;
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 pub trait AssetReader: Send {
     async fn read_fully(&mut self) -> Vec<u8>;
 }
@@ -28,7 +28,7 @@ impl<R: Read + Send> ReadAssetReader<R> {
     }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl<R: Read + Send> AssetReader for ReadAssetReader<R> {
     async fn read_fully(&mut self) -> Vec<u8> {
         let mut vec = Vec::new();

@@ -1,5 +1,4 @@
-use std::error::Error;
-use std::fmt::{Debug, Display, Formatter};
+use std::fmt::Debug;
 use std::str::FromStr;
 use once_cell::sync::Lazy;
 use regex::Regex;

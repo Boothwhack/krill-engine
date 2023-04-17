@@ -1,11 +1,13 @@
 [package]
-name = "game"
+name = "game-desktop"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+assets = { path = "../assets", features = ["desktop_fs"] }
 engine = { path = "../engine" }
-futures = { version = "0.3", features = ["executor"] }
-winit = "0.28"
+env_logger = "0.10"
+game = { path = "../game" }
+tokio = { version = "1.27", features = ["full"] }

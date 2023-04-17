@@ -8,7 +8,7 @@ jobs:
       - run: cd game-web && npm ci
       - run: cd game-web && npm run build
       - name: Upload Github Pages artifact
-        uses: actions/upload-pages-artifact
+        uses: actions/upload-pages-artifact@v1
         with:
           path: game-web/dist
   deploy:

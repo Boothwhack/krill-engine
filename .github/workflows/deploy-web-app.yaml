@@ -4,6 +4,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions-rs/install@v0.1.2
+        with:
+          crate: wasm-pack
       - uses: actions/checkout@v3
       - working-directory: game-web
         run: npm ci

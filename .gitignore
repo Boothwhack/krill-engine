@@ -1,3 +1,5 @@
 /.idea
 /target
-pkg
+/game-web/dist
+/game-web/pkg
+node_modules

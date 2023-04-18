@@ -10,7 +10,7 @@ use engine::render::{Buffer, BufferUsages, Color, Handle, Pipeline, RenderPass, 
 use engine::render::pipeline::{RenderPipelineAsset, RenderPipelineAssetPipeline};
 use engine::resource::frunk::hlist::{HList, Selector};
 use engine::resource::ResourceList;
-use engine::winit_surface::{SurfaceEvent, WGPURenderResource};
+use engine::winit_surface::{SurfaceEvent, SurfaceEventResult, WGPURenderResource};
 
 pub struct TriangleResource {
     pipeline: Handle<Pipeline>,
@@ -57,13 +57,15 @@ pub async fn setup_game<R, A, IRender, IAssets>(mut resources: R) -> R::WithReso
     resources.with_resource(TriangleResource { pipeline, buffer })
 }
 
-pub fn run_game<R, IRender, ITriangle>(event: SurfaceEvent, resources: &mut R)
+pub fn run_game<R, IRender, ITriangle>(event: SurfaceEvent, resources: &mut R) -> SurfaceEventResult
     where R: HList + Selector<WGPURenderResource, IRender> + Selector<TriangleResource, ITriangle>, {
     match event {
         SurfaceEvent::Resize { width, height } => {
             let render: &mut WGPURenderResource = resources.get_mut();
             let (surface, device) = render.get();
             surface.configure(device, width, height);
+
+            SurfaceEventResult::Continue
         }
         SurfaceEvent::Draw => {
             let render: &WGPURenderResource = resources.get();
@@ -83,7 +85,11 @@ pub fn run_game<R, IRender, ITriangle>(event: SurfaceEvent, resources: &mut R)
             render.device().submit_commands(encoder);
 
             render.surface().present(frame);
+
+            SurfaceEventResult::Continue
         }
-        SurfaceEvent::Close => {}
+        SurfaceEvent::CloseRequested => {
+            SurfaceEventResult::Exit(None)
+        }
     }
 }

@@ -1,3 +1,4 @@
+use std::error::Error;
 use std::ops::Deref;
 use async_trait::async_trait;
 use frunk::hlist::{Plucker, Selector};
@@ -10,11 +11,11 @@ use render::{DeviceContext, SurfaceContext, WGPUContext};
 use crate::process::ProcessBuilder;
 use crate::resource::{ResourceList, ResourceListHas, Resources};
 
-pub struct SurfaceResource<S> {
+pub struct SurfaceConfigurationResource<S> {
     surface: S,
 }
 
-impl<S> SurfaceResource<S> {
+impl<S> SurfaceConfigurationResource<S> {
     pub fn surface(&self) -> &S {
         &self.surface
     }
@@ -30,7 +31,7 @@ pub trait HasWindow {
     fn size(&self) -> WindowSize;
 }
 
-impl<S> Deref for SurfaceResource<S> {
+impl<S> Deref for SurfaceConfigurationResource<S> {
     type Target = S;
 
     fn deref(&self) -> &Self::Target {
@@ -61,7 +62,7 @@ impl HasWindow for WinitSurface {
     }
 }
 
-pub type WinitSurfaceResource = SurfaceResource<WinitSurface>;
+pub type WinitSurfaceResource = SurfaceConfigurationResource<WinitSurface>;
 
 pub trait WithWinitSurfaceExt<R: ResourceList> {
     fn with_winit_surface(self) -> ProcessBuilder<R::WithResource<WinitSurfaceResource>>;
@@ -74,7 +75,7 @@ impl<R: ResourceList + Send> WithWinitSurfaceExt<R> for ProcessBuilder<R> {
             let window = WindowBuilder::new()
                 .build(&event_loop).unwrap();
 
-            resources.with_resource(SurfaceResource {
+            resources.with_resource(SurfaceConfigurationResource {
                 surface: WinitSurface { event_loop, window }
             })
         })
@@ -87,37 +88,54 @@ pub enum SurfaceEvent {
         height: u32,
     },
     Draw,
-    Close,
+    CloseRequested,
+}
+
+pub enum SurfaceEventResult {
+    Continue,
+    Exit(Option<i32>),
+    Err(Box<dyn Error>),
 }
 
 pub trait RunWinitSurfaceExt<R, I>
     where R: ResourceList,
           R::Resources: Plucker<WinitSurfaceResource, I>,
-          <<R as ResourceList>::Resources as Plucker<SurfaceResource<WinitSurface>, I>>::Remainder: 'static {
+          <<R as ResourceList>::Resources as Plucker<SurfaceConfigurationResource<WinitSurface>, I>>::Remainder: 'static {
     fn run<F>(self, handler: F) -> !
-        where F: FnMut(SurfaceEvent, &mut <R::Resources as Plucker<WinitSurfaceResource, I>>::Remainder) + 'static;
+        where F: FnMut(SurfaceEvent, &mut <R::Resources as Plucker<WinitSurfaceResource, I>>::Remainder) -> SurfaceEventResult + 'static;
 }
 
 impl<R, I> RunWinitSurfaceExt<R, I> for ProcessBuilder<R>
     where R: ResourceList,
           R::Resources: Plucker<WinitSurfaceResource, I>,
-          <<R as ResourceList>::Resources as Plucker<SurfaceResource<WinitSurface>, I>>::Remainder: 'static {
+          <<R as ResourceList>::Resources as Plucker<SurfaceConfigurationResource<WinitSurface>, I>>::Remainder: 'static {
     fn run<F>(self, mut handler: F) -> !
-        where F: FnMut(SurfaceEvent, &mut <R::Resources as Plucker<WinitSurfaceResource, I>>::Remainder) + 'static {
+        where F: FnMut(SurfaceEvent, &mut <R::Resources as Plucker<WinitSurfaceResource, I>>::Remainder) -> SurfaceEventResult + 'static {
         let resources = self.build().unpack();
 
-        let (SurfaceResource { surface }, mut resources): (WinitSurfaceResource, _) = resources.pluck();
-        surface.event_loop.run(move |event, _, control_flow| match event {
-            Event::RedrawRequested(window_id) if window_id == surface.window.id() => {
-                handler(SurfaceEvent::Draw, &mut resources);
-            }
-            Event::WindowEvent { event, window_id } if window_id == surface.window.id() => match event {
-                WindowEvent::Resized(PhysicalSize { width, height }) => {
-                    handler(SurfaceEvent::Resize { width, height }, &mut resources)
+        let (SurfaceConfigurationResource { surface }, mut resources): (WinitSurfaceResource, _) = resources.pluck();
+        surface.event_loop.run(move |event, _, control_flow| {
+            let result = match event {
+                Event::RedrawRequested(window_id) if window_id == surface.window.id() => {
+                    handler(SurfaceEvent::Draw, &mut resources)
                 }
-                _ => {}
-            }
-            _ => {}
+                Event::WindowEvent { event, window_id } if window_id == surface.window.id() => match event {
+                    WindowEvent::Resized(PhysicalSize { width, height }) => {
+                        handler(SurfaceEvent::Resize { width, height }, &mut resources)
+                    }
+                    WindowEvent::CloseRequested => {
+                        handler(SurfaceEvent::CloseRequested, &mut resources)
+                    }
+                    _ => SurfaceEventResult::Continue,
+                }
+                _ => SurfaceEventResult::Continue,
+            };
+            match result {
+                SurfaceEventResult::Continue => {},
+                SurfaceEventResult::Exit(None) => control_flow.set_exit(),
+                SurfaceEventResult::Exit(Some(code)) => control_flow.set_exit_with_code(code),
+                SurfaceEventResult::Err(err) => panic!("error in surface event handler: {}", err),
+            };
         })
     }
 }
@@ -156,7 +174,7 @@ impl WGPURenderResource {
 
 #[async_trait(? Send)]
 pub trait WGPURenderExt<R, I, W>
-    where R: ResourceListHas<SurfaceResource<W>, I>,
+    where R: ResourceListHas<SurfaceConfigurationResource<W>, I>,
           W: HasWindow {
     async fn with_wgpu_render(self) -> ProcessBuilder<R::WithResource<WGPURenderResource>>;
 }
@@ -164,11 +182,11 @@ pub trait WGPURenderExt<R, I, W>
 #[async_trait(? Send)]
 impl<R, I, W> WGPURenderExt<R, I, W> for ProcessBuilder<R>
     where R: ResourceList,
-          R::Resources: Selector<SurfaceResource<W>, I>,
+          R::Resources: Selector<SurfaceConfigurationResource<W>, I>,
           W: HasWindow, {
     async fn with_wgpu_render(self) -> ProcessBuilder<R::WithResource<WGPURenderResource>> {
         self.setup_async(|resources| async move {
-            let window: &SurfaceResource<W> = resources.get();
+            let window: &SurfaceConfigurationResource<W> = resources.get();
 
             let wgpu_context = WGPUContext::new().await.unwrap();
             let mut surface_context = wgpu_context.create_surface(window.surface.window());

@@ -145,6 +145,9 @@ pub(crate) mod serial {
         BGRA8UnormSRGB,
         #[serde(rename = "rgba8-unorm-srgb")]
         RGBA8UnormSRGB,
+        /** Use same format as the surfaces texture. */
+        #[serde(rename = "surface")]
+        Surface,
     }
 }
 

@@ -44,8 +44,9 @@ pub async fn setup_game<R, A, IRender, IAssets>(mut resources: R) -> R::WithReso
         .expect("render pipeline asset");
 
     let render: &mut WGPURenderResource = resources.get_mut();
+    let surface_format = render.surface().format();
 
-    let pipeline = render.device_mut().create_pipeline(*pipeline_asset);
+    let pipeline = render.device_mut().create_pipeline_from_asset(*pipeline_asset, surface_format);
     let buffer = render.device_mut().create_buffer(size_of_val(&VERTICES), BufferUsages::VERTEX | BufferUsages::COPY_DST);
 
     let data = unsafe {

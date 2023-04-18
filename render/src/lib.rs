@@ -14,6 +14,8 @@ pub use utils::Handle;
 use crate::pipeline::RenderPipelineAsset;
 use crate::pipeline::serial::{TargetFormat, VertexFormatDefinition, VertexShaderStepMode};
 
+pub type TextureFormat = wgpu::TextureFormat;
+
 pub struct Pipeline {
     pipeline: wgpu::RenderPipeline,
 }
@@ -153,7 +155,7 @@ impl DeviceContext {
     }
 
     // TODO: Clean up!
-    pub fn create_pipeline(&mut self, asset: RenderPipelineAsset) -> Handle<Pipeline> {
+    pub fn create_pipeline_from_asset(&mut self, asset: RenderPipelineAsset, surface_format: Option<TextureFormat>) -> Handle<Pipeline> {
         let modules: HashMap<String, _> = asset.shader_modules
             .into_iter()
             .map(|(name, source)| {
@@ -174,8 +176,9 @@ impl DeviceContext {
                 .iter()
                 .map(|target| Some(ColorTargetState {
                     format: match target.format {
-                        TargetFormat::BGRA8UnormSRGB => wgpu::TextureFormat::Bgra8UnormSrgb,
-                        TargetFormat::RGBA8UnormSRGB => wgpu::TextureFormat::Rgba8UnormSrgb,
+                        TargetFormat::BGRA8UnormSRGB => TextureFormat::Bgra8UnormSrgb,
+                        TargetFormat::RGBA8UnormSRGB => TextureFormat::Rgba8UnormSrgb,
+                        TargetFormat::Surface => surface_format.expect("surface format is not known"),
                     },
                     blend: None,
                     write_mask: wgpu::ColorWrites::all(),
@@ -292,6 +295,10 @@ impl SurfaceContext {
 
     pub fn present(&self, frame: SurfaceFrame) {
         frame.surface_texture.present();
+    }
+
+    pub fn format(&self) -> Option<TextureFormat> {
+        self.surface_config.as_ref().map(|config| config.format)
     }
 }
 

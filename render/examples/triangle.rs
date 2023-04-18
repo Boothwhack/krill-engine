@@ -45,7 +45,7 @@ async fn main() {
         .downcast::<RenderPipelineAsset>()
         .expect("render pipeline asset");
 
-    let pipeline = device.create_pipeline(*pipeline_asset);
+    let pipeline = device.create_pipeline_from_asset(*pipeline_asset);
     let buffer = device.create_buffer(size_of_val(&VERTICES), BufferUsages::VERTEX | BufferUsages::COPY_DST);
 
     let data = unsafe {

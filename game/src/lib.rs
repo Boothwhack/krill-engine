@@ -2,7 +2,7 @@ use std::any::TypeId;
 use std::collections::HashMap;
 use std::mem::{size_of, size_of_val};
 use std::slice::from_raw_parts;
-use std::time::Instant;
+use instant::Instant;
 use engine::asset_resource::AssetSourceResource;
 use engine::assets::AssetPipelines;
 use engine::assets::path::AssetPath;

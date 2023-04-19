@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use std::mem::{size_of, size_of_val};
 use std::slice::from_raw_parts;
 use instant::Instant;
+use nalgebra::Vector2;
+use winit::event::{DeviceEvent, ElementState, VirtualKeyCode};
 use engine::asset_resource::AssetSourceResource;
 use engine::assets::AssetPipelines;
 use engine::assets::path::AssetPath;
@@ -14,18 +16,29 @@ use engine::resource::frunk::hlist::{HList, Selector};
 use engine::resource::ResourceList;
 use engine::winit_surface::{SurfaceEvent, SurfaceEventResult, WGPURenderResource};
 
+#[derive(Debug, Default)]
+struct InputState {
+    up: bool,
+    down: bool,
+    left: bool,
+    right: bool,
+}
+
 pub struct TriangleResource {
     pipeline: Handle<Pipeline>,
     vertex_buffer: Handle<Buffer>,
     uniform_buffer: Handle<Buffer>,
     camera_bind_group: BindGroup,
     start_time: Instant,
+    previous_frame: Instant,
+    input_state: InputState,
+    position: Vector2<f32>,
 }
 
 const VERTICES: [f32; 6 * 3] = [
-    -0.5, -0.5, 1.0, 0.0, 0.0, 1.0,
-    0.0, 0.5, 0.0, 1.0, 0.0, 1.0,
-    0.5, -0.5, 0.0, 0.0, 1.0, 1.0,
+    -0.3, -0.3, 1.0, 0.0, 0.0, 1.0,
+    0.0, 0.3, 0.0, 1.0, 0.0, 1.0,
+    0.3, -0.3, 0.0, 0.0, 1.0, 1.0,
 ];
 
 pub async fn setup_game<R, A, IRender, IAssets>(mut resources: R) -> R::WithResource<TriangleResource>
@@ -83,6 +96,9 @@ pub async fn setup_game<R, A, IRender, IAssets>(mut resources: R) -> R::WithReso
         uniform_buffer,
         camera_bind_group,
         start_time: Instant::now(),
+        previous_frame: Instant::now(),
+        input_state: Default::default(),
+        position: Default::default(),
     })
 }
 
@@ -97,14 +113,31 @@ pub fn run_game<R, IRender, ITriangle>(event: SurfaceEvent, resources: &mut R) -
             SurfaceEventResult::Continue
         }
         SurfaceEvent::Draw => {
-            let render: &WGPURenderResource = resources.get();
-            let triangle: &TriangleResource = resources.get();
+            let mut triangle: &mut TriangleResource = resources.get_mut();
+            let mut move_direction = Vector2::new(
+                if triangle.input_state.left { -1.0 } else { 0.0 } + if triangle.input_state.right { 1.0 } else { 0.0 },
+                if triangle.input_state.down { -1.0 } else { 0.0 } + if triangle.input_state.up { 1.0 } else { 0.0 },
+            );
+            let elapsed_since_previous_frame = triangle.previous_frame.elapsed().as_secs_f32();
+            let move_speed = 0.5;
+            move_direction *= elapsed_since_previous_frame;
+            triangle.position += move_direction * move_speed;
+            triangle.previous_frame = Instant::now();
 
+            let triangle: &TriangleResource = resources.get();
             let elapsed = triangle.start_time.elapsed().as_secs_f32() * 2.0;
-            let transform: [f32; 4] = [elapsed.sin() * 0.4, elapsed.cos() * 0.4, 0.0, 0.0];
+
+            let spin_radius = 0.1;
+            let transform: [f32; 4] = [
+                triangle.position.x + elapsed.sin() * spin_radius,
+                triangle.position.y + elapsed.cos() * spin_radius,
+                0.0, 0.0,
+            ];
             let transform_data = unsafe {
                 from_raw_parts(transform.as_ptr() as *const u8, size_of_val(&transform))
             };
+
+            let render: &WGPURenderResource = resources.get();
             render.device().submit_buffer(triangle.uniform_buffer, 0, transform_data);
 
             let frame = render.surface().get_frame();
@@ -128,5 +161,19 @@ pub fn run_game<R, IRender, ITriangle>(event: SurfaceEvent, resources: &mut R) -
         SurfaceEvent::CloseRequested => {
             SurfaceEventResult::Exit(None)
         }
+        SurfaceEvent::DeviceEvent(DeviceEvent::Key(key)) => {
+            println!("Key event: {:?}", key);
+            let mut triangle: &mut TriangleResource = resources.get_mut();
+            let state = key.state == ElementState::Pressed;
+            match key.virtual_keycode {
+                Some(VirtualKeyCode::Up) => triangle.input_state.up = state,
+                Some(VirtualKeyCode::Down) => triangle.input_state.down = state,
+                Some(VirtualKeyCode::Left) => triangle.input_state.left = state,
+                Some(VirtualKeyCode::Right) => triangle.input_state.right = state,
+                _ => ()
+            }
+            SurfaceEventResult::Continue
+        }
+        _ => SurfaceEventResult::Continue,
     }
 }

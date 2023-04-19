@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use frunk::hlist::{Plucker, Selector};
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle};
 use winit::dpi::PhysicalSize;
-use winit::event::{Event, WindowEvent};
+use winit::event::{DeviceEvent, Event, WindowEvent};
 use winit::event_loop::EventLoop;
 use winit::window::{Window, WindowBuilder};
 use render::{DeviceContext, SurfaceContext, WGPUContext};
@@ -82,6 +82,17 @@ impl<R: ResourceList + Send> WithWinitSurfaceExt<R> for ProcessBuilder<R> {
     }
 }
 
+pub mod input {
+    pub use winit::event::DeviceEvent;
+    pub use winit::event::MouseScrollDelta;
+    pub use winit::event::AxisId;
+    pub use winit::event::ButtonId;
+    pub use winit::event::ElementState;
+    pub use winit::event::KeyboardInput;
+    pub use winit::event::ScanCode;
+    pub use winit::event::VirtualKeyCode;
+}
+
 pub enum SurfaceEvent {
     Resize {
         width: u32,
@@ -89,6 +100,7 @@ pub enum SurfaceEvent {
     },
     Draw,
     CloseRequested,
+    DeviceEvent(input::DeviceEvent),
 }
 
 pub enum SurfaceEventResult {
@@ -130,12 +142,18 @@ impl<R, I> RunWinitSurfaceExt<R, I> for ProcessBuilder<R>
                     WindowEvent::CloseRequested => {
                         handler(SurfaceEvent::CloseRequested, &mut resources)
                     }
+                    WindowEvent::KeyboardInput {input, ..} => {
+                        handler(SurfaceEvent::DeviceEvent(DeviceEvent::Key(input)), &mut resources)
+                    }
                     _ => SurfaceEventResult::Continue,
+                }
+                Event::DeviceEvent { event, .. } => {
+                    handler(SurfaceEvent::DeviceEvent(event), &mut resources)
                 }
                 _ => SurfaceEventResult::Continue,
             };
             match result {
-                SurfaceEventResult::Continue => {},
+                SurfaceEventResult::Continue => {}
                 SurfaceEventResult::Exit(None) => control_flow.set_exit(),
                 SurfaceEventResult::Exit(Some(code)) => control_flow.set_exit_with_code(code),
                 SurfaceEventResult::Err(err) => panic!("error in surface event handler: {}", err),

@@ -25,7 +25,7 @@ pub struct TriangleResource {
 const VERTICES: [f32; 6 * 3] = [
     -0.5, -0.5, 1.0, 0.0, 0.0, 1.0,
     0.0, 0.5, 0.0, 1.0, 0.0, 1.0,
-    0.5, -0.5, 0.0, 0.0, 1.0, 0.0,
+    0.5, -0.5, 0.0, 0.0, 1.0, 1.0,
 ];
 
 pub async fn setup_game<R, A, IRender, IAssets>(mut resources: R) -> R::WithResource<TriangleResource>

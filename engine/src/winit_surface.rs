@@ -119,6 +119,10 @@ impl<R, I> RunWinitSurfaceExt<R, I> for ProcessBuilder<R>
                 Event::RedrawRequested(window_id) if window_id == surface.window.id() => {
                     handler(SurfaceEvent::Draw, &mut resources)
                 }
+                Event::RedrawEventsCleared => {
+                    surface.window.request_redraw();
+                    SurfaceEventResult::Continue
+                }
                 Event::WindowEvent { event, window_id } if window_id == surface.window.id() => match event {
                     WindowEvent::Resized(PhysicalSize { width, height }) => {
                         handler(SurfaceEvent::Resize { width, height }, &mut resources)

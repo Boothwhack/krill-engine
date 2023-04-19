@@ -8,4 +8,5 @@ edition = "2021"
 [dependencies]
 engine = { path = "../engine" }
 futures = { version = "0.3", features = ["executor"] }
+nalgebra = "0.32"
 winit = "0.28"

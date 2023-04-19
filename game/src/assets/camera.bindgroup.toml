@@ -1,0 +1,5 @@
+[[entries]]
+visibility = "vertex"
+
+[entries.type.buffer]
+type = "uniform"

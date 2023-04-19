@@ -1,4 +1,4 @@
-pub(crate) mod serial {
+pub mod serial {
     use async_trait::async_trait;
     use assets::{AssetPipeline, LoadAssetError};
     use assets::path::AssetPath;
@@ -11,22 +11,28 @@ pub(crate) mod serial {
 
     #[derive(Deserialize, Debug)]
     #[serde(rename_all = "kebab-case")]
-    pub(crate) struct PipelineDefinition {
+    pub struct PipelineDefinition {
         pub shader_modules: Vec<ShaderModuleDefinition>,
+        pub bind_groups: Vec<BindGroupLayoutDefinition>,
         pub vertex_shader: VertexShaderDefinition,
         pub fragment_shader: Option<FragmentShaderDefinition>,
     }
 
     #[derive(Deserialize, Debug)]
+    pub struct BindGroupLayoutDefinition {
+        pub layout: String,
+    }
+
+    #[derive(Deserialize, Debug)]
     #[serde(rename_all = "kebab-case")]
-    pub(crate) struct ShaderModuleDefinition {
+    pub struct ShaderModuleDefinition {
         pub name: String,
         pub path: String,
     }
 
     #[derive(Default, Deserialize, Debug)]
     #[serde(rename_all = "kebab-case")]
-    pub(crate) enum VertexShaderStepMode {
+    pub enum VertexShaderStepMode {
         #[default]
         Vertex,
         Instance,
@@ -34,7 +40,7 @@ pub(crate) mod serial {
 
     #[derive(Deserialize, Debug)]
     #[serde(rename_all = "kebab-case")]
-    pub(crate) struct VertexShaderDefinition {
+    pub struct VertexShaderDefinition {
         pub shader_module: String,
         pub entrypoint: String,
         pub buffers: Vec<VertexBufferDefinition>,
@@ -42,13 +48,13 @@ pub(crate) mod serial {
 
     #[derive(Deserialize, Debug)]
     #[serde(rename_all = "kebab-case")]
-    pub(crate) struct VertexBufferDefinition {
+    pub struct VertexBufferDefinition {
         pub step_mode: VertexShaderStepMode,
         pub attributes: Vec<VertexBufferAttributeDefinition>,
     }
 
     impl VertexBufferDefinition {
-        pub(crate) fn stride(&self) -> u64 {
+        pub fn stride(&self) -> u64 {
             self.attributes
                 .iter()
                 .map(|attr| attr.format.size())
@@ -58,18 +64,18 @@ pub(crate) mod serial {
 
     #[derive(Deserialize, Debug)]
     #[serde(rename_all = "kebab-case")]
-    pub(crate) struct VertexBufferAttributeDefinition {
+    pub struct VertexBufferAttributeDefinition {
         pub format: VertexFormatDefinition,
     }
 
     #[derive(Debug)]
-    pub(crate) enum VertexFormatDefinition {
+    pub enum VertexFormatDefinition {
         Float32(u32),
         Float64(u32),
     }
 
     impl VertexFormatDefinition {
-        pub(crate) fn size(&self) -> u64 {
+        pub fn size(&self) -> u64 {
             match self {
                 VertexFormatDefinition::Float32(count) => 4 * count,
                 VertexFormatDefinition::Float64(count) => 8 * count,
@@ -86,7 +92,7 @@ pub(crate) mod serial {
     }
 
     #[derive(Debug, Error)]
-    pub(crate) enum InvalidVertexFormatString {
+    pub enum InvalidVertexFormatString {
         #[error("invalid element count")]
         InvalidCount,
         #[error("unknown format")]
@@ -125,7 +131,7 @@ pub(crate) mod serial {
 
     #[derive(Deserialize, Debug)]
     #[serde(rename_all = "kebab-case")]
-    pub(crate) struct FragmentShaderDefinition {
+    pub struct FragmentShaderDefinition {
         pub shader_module: String,
         pub entrypoint: String,
         pub targets: Vec<FragmentShaderTargetDefinition>,
@@ -133,12 +139,12 @@ pub(crate) mod serial {
 
     #[derive(Deserialize, Debug)]
     #[serde(rename_all = "kebab-case")]
-    pub(crate) struct FragmentShaderTargetDefinition {
+    pub struct FragmentShaderTargetDefinition {
         pub format: TargetFormat,
     }
 
     #[derive(Deserialize, Debug)]
-    pub(crate) enum TargetFormat {
+    pub enum TargetFormat {
         #[serde(rename = "bgra8-unorm-srgb")]
         BGRA8UnormSRGB,
         #[serde(rename = "rgba8-unorm-srgb")]
@@ -151,8 +157,8 @@ pub(crate) mod serial {
     pub struct RenderPipelineAssetPipeline;
 
     pub struct RenderPipelineAsset {
-        pub(crate) shader_modules: HashMap<String, String>,
-        pub(crate) definition: PipelineDefinition,
+        pub shader_modules: HashMap<String, String>,
+        pub definition: PipelineDefinition,
     }
 
     #[async_trait(? Send)]

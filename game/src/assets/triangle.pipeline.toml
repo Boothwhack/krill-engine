@@ -2,13 +2,21 @@
 name = "triangle"
 path = "triangle.wgsl"
 
+[[bind-groups]]
+layout = "camera"
+
 [vertex-shader]
 shader-module = "triangle"
 entrypoint = "vs_main"
 
 [[vertex-shader.buffers]]
 step-mode = "vertex"
-attributes = [{ format = "f32x2" }]
+attributes = [
+    # Position
+    { format = "f32x2" },
+    # Color (rgba)
+    { format = "f32x4" }
+]
 
 [fragment-shader]
 shader-module = "triangle"

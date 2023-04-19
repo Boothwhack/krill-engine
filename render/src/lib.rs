@@ -1,15 +1,18 @@
+pub mod bindgroup;
 pub mod pipeline;
 
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::iter::once;
-use std::ops::Range;
+use std::ops::{Deref, Range};
+use std::rc::Rc;
 
-use wgpu::{BufferDescriptor, ColorTargetState, FragmentState, Label, LoadOp, Operations, RenderPassColorAttachment, RenderPassDescriptor, RenderPipelineDescriptor, RequestAdapterOptions, ShaderModuleDescriptor, ShaderSource, TextureViewDescriptor, VertexState};
+use wgpu::{BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BufferBinding, BufferDescriptor, ColorTargetState, FragmentState, Label, LoadOp, Operations, PipelineLayoutDescriptor, RenderPassColorAttachment, RenderPassDescriptor, RenderPipelineDescriptor, RequestAdapterOptions, ShaderModuleDescriptor, ShaderSource, TextureViewDescriptor, VertexState};
 
 pub use wgpu::BufferUsages;
 use utils::{CompactList};
 pub use utils::Handle;
+use crate::bindgroup::serial::{BindGroupLayoutAsset, BufferType, EntryType, Visibility};
 use crate::pipeline::serial::{RenderPipelineAsset, TargetFormat, VertexFormatDefinition, VertexShaderStepMode};
 
 pub type TextureFormat = wgpu::TextureFormat;
@@ -24,10 +27,14 @@ pub struct Buffer {
     usage: BufferUsages,
 }
 
+pub type BindGroupLayout = wgpu::BindGroupLayout;
+pub type BindGroup = Rc<wgpu::BindGroup>;
+
 #[derive(Default)]
 struct Resources {
     pipelines: CompactList<Pipeline>,
     buffers: CompactList<Buffer>,
+    bind_group_layouts: CompactList<BindGroupLayout>,
 }
 
 pub struct WGPUContext {
@@ -112,6 +119,10 @@ impl OwnedVertexBufferLayout {
     }
 }
 
+pub enum BindGroupBinding<'a> {
+    Buffer(&'a Buffer)
+}
+
 impl DeviceContext {
     pub fn create_buffer(&mut self, size: usize, usage: BufferUsages) -> Handle<Buffer> {
         let buffer = self.device.create_buffer(&BufferDescriptor {
@@ -133,6 +144,27 @@ impl DeviceContext {
         self.resources.buffers.get(buffer)
     }
 
+    pub fn get_bind_group_layout(&self, bind_group_layout: Handle<BindGroupLayout>) -> Option<&BindGroupLayout> {
+        self.resources.bind_group_layouts.get(bind_group_layout)
+    }
+
+    pub fn create_bind_group(&self, layout: Handle<BindGroupLayout>, entries: &[BindGroupBinding]) -> BindGroup {
+        let entries: Vec<_> = entries.iter()
+            .enumerate()
+            .map(|(index, binding)| BindGroupEntry {
+                binding: index as _,
+                resource: match binding {
+                    BindGroupBinding::Buffer(buffer) => buffer.buffer.as_entire_binding(),
+                },
+            })
+            .collect();
+        Rc::new(self.device.create_bind_group(&BindGroupDescriptor {
+            label: Label::default(),
+            layout: self.resources.bind_group_layouts.get(layout).unwrap(),
+            entries: entries.as_slice(),
+        }))
+    }
+
     fn ensure_buffer_capacity(device: &wgpu::Device, buffer: &mut Buffer, size: usize) {
         if buffer.size < size {
             buffer.buffer = device.create_buffer(&BufferDescriptor {
@@ -152,7 +184,42 @@ impl DeviceContext {
         Self::ensure_buffer_capacity(&self.device, buffer, size);
     }
 
-    pub fn create_pipeline_from_asset(&mut self, asset: RenderPipelineAsset, surface_format: Option<TextureFormat>) -> Handle<Pipeline> {
+    pub fn create_bind_group_layout_from_asset(&mut self, asset: BindGroupLayoutAsset) -> Handle<BindGroupLayout> {
+        let entries: Vec<_> = asset.entries
+            .iter()
+            .enumerate()
+            .map(|(index, entry)| BindGroupLayoutEntry {
+                binding: index as _,
+                visibility: match entry.visibility {
+                    Visibility::Vertex => wgpu::ShaderStages::VERTEX,
+                    Visibility::Fragment => wgpu::ShaderStages::FRAGMENT,
+                    Visibility::VertexAndFragment => wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    Visibility::All => wgpu::ShaderStages::all(),
+                },
+                ty: match entry.ty {
+                    EntryType::Buffer { ty: BufferType::Uniform } => wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    }
+                },
+                count: None,
+            })
+            .collect();
+
+        let bind_group_layout = self.device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+            label: Label::default(),
+            entries: entries.as_slice(),
+        });
+        self.resources.bind_group_layouts.add(bind_group_layout)
+    }
+
+    pub fn create_pipeline_from_asset(
+        &mut self,
+        asset: RenderPipelineAsset,
+        surface_format: Option<TextureFormat>,
+        bind_group_layouts: HashMap<String, Handle<BindGroupLayout>>,
+    ) -> Handle<Pipeline> {
         let modules: HashMap<_, _> = asset.shader_modules
             .into_iter()
             .map(|(name, source)| {
@@ -221,6 +288,17 @@ impl DeviceContext {
                 }
             })
             .collect::<Vec<_>>();
+        let bind_group_layouts: Vec<_> = asset.definition.bind_groups
+            .iter()
+            .map(|def| bind_group_layouts[&def.layout])
+            .map(|handle| self.resources.bind_group_layouts.get(handle).unwrap())
+            .collect();
+        let layout = self.device.create_pipeline_layout(&PipelineLayoutDescriptor {
+            label: Label::default(),
+
+            bind_group_layouts: bind_group_layouts.as_slice(),
+            push_constant_ranges: &[],
+        });
 
         let pipeline = self.device.create_render_pipeline(&RenderPipelineDescriptor {
             label: Label::default(),
@@ -238,7 +316,7 @@ impl DeviceContext {
                 buffers: vertex_buffers.iter().map(|buffer| buffer.to_ref()).collect::<Vec<_>>().as_slice(),
             },
 
-            layout: None,
+            layout: Some(&layout),
             primitive: wgpu::PrimitiveState::default(),
             multiview: None,
             multisample: wgpu::MultisampleState::default(),
@@ -349,6 +427,9 @@ impl<'a> CommandEncoderContext<'a> {
                 encoder_pass.set_vertex_buffer(idx as u32, buffer.buffer.slice(..));
             }
         }
+        for (index, bind_group) in pass.bind_groups.iter().enumerate() {
+            encoder_pass.set_bind_group(index as _, bind_group.deref(), &[]);
+        }
         encoder_pass.draw(pass.vertices.clone(), 0..1);
     }
 }
@@ -388,4 +469,5 @@ pub struct RenderPass {
     pub vertex_buffers: Vec<Option<Handle<Buffer>>>,
     pub targets: Vec<Target>,
     pub vertices: Range<u32>,
+    pub bind_groups: Vec<BindGroup>,
 }

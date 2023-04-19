@@ -9,7 +9,7 @@ struct VertexOutput {
 }
 
 struct CameraUniform {
-    transform: vec2<f32>,
+    transform: vec4<f32>,
 }
 
 @group(0) @binding(0)
@@ -18,7 +18,7 @@ var<uniform> camera: CameraUniform;
 @vertex
 fn vs_main(input: VertexInput) -> VertexOutput {
     var output: VertexOutput;
-    output.position = vec4(input.position + camera.transform, 0.0, 1.0);
+    output.position = vec4(input.position, 0.0, 1.0) + camera.transform;
     output.color = input.color;
     return output;
 }

@@ -71,7 +71,7 @@ pub async fn setup_game<R, A, IRender, IAssets>(mut resources: R) -> R::WithReso
     };
     render.device().submit_buffer(vertex_buffer, 0, data);
 
-    let uniform_buffer = render.device_mut().create_buffer(2 * size_of::<f32>(), BufferUsages::UNIFORM | BufferUsages::COPY_DST);
+    let uniform_buffer = render.device_mut().create_buffer(4 * size_of::<f32>(), BufferUsages::UNIFORM | BufferUsages::COPY_DST);
     let uniform_buffer_ref = render.device().get_buffer(uniform_buffer).unwrap();
     let camera_bind_group = render.device().create_bind_group(camera_bind_group_layout, &[
         BindGroupBinding::Buffer(uniform_buffer_ref),
@@ -101,7 +101,7 @@ pub fn run_game<R, IRender, ITriangle>(event: SurfaceEvent, resources: &mut R) -
             let triangle: &TriangleResource = resources.get();
 
             let elapsed = triangle.start_time.elapsed().as_secs_f32() * 2.0;
-            let transform: [f32; 2] = [elapsed.sin() * 0.4, elapsed.cos() * 0.4];
+            let transform: [f32; 4] = [elapsed.sin() * 0.4, elapsed.cos() * 0.4, 0.0, 0.0];
             let transform_data = unsafe {
                 from_raw_parts(transform.as_ptr() as *const u8, size_of_val(&transform))
             };

@@ -1,12 +1,10 @@
-use std::any::Any;
-use std::collections::HashMap;
-use async_trait::async_trait;
-use assets::{AssetPipeline, LoadAssetError};
-use assets::path::AssetPath;
-use assets::source::AssetSource;
-use crate::pipeline::serial::PipelineDefinition;
-
 pub(crate) mod serial {
+    use async_trait::async_trait;
+    use assets::{AssetPipeline, LoadAssetError};
+    use assets::path::AssetPath;
+    use assets::source::AssetSource;
+    use std::any::Any;
+    use std::collections::HashMap;
     use std::str::FromStr;
     use serde::{Deserialize, Deserializer};
     use thiserror::Error;
@@ -149,46 +147,48 @@ pub(crate) mod serial {
         #[serde(rename = "surface")]
         Surface,
     }
-}
 
-pub struct RenderPipelineAssetPipeline;
+    pub struct RenderPipelineAssetPipeline;
 
-pub struct RenderPipelineAsset {
-    pub(crate) shader_modules: HashMap<String, String>,
-    pub(crate) definition: PipelineDefinition,
-}
+    pub struct RenderPipelineAsset {
+        pub(crate) shader_modules: HashMap<String, String>,
+        pub(crate) definition: PipelineDefinition,
+    }
 
-#[async_trait(?Send)]
-impl AssetPipeline for RenderPipelineAssetPipeline {
-    async fn load_asset(&self, path: AssetPath, source: &dyn AssetSource) -> Result<Box<dyn Any>, LoadAssetError> {
-        let path = path.append(".toml");
+    #[async_trait(? Send)]
+    impl AssetPipeline for RenderPipelineAssetPipeline {
+        async fn load_asset(&self, path: AssetPath, source: &dyn AssetSource) -> Result<Box<dyn Any>, LoadAssetError> {
+            let path = path.append(".toml");
 
-        let mut pipeline_file = source.open_asset_file(&path).await?;
-        let pipeline_file = pipeline_file.read_fully().await;
-        let pipeline_file = String::from_utf8(pipeline_file).map_err(LoadAssetError::other)?;
+            // load the main asset definition file in TOML format
+            let mut pipeline_file = source.open_asset_file(&path).await?;
+            let pipeline_file = pipeline_file.read_fully().await;
+            let pipeline_file = String::from_utf8(pipeline_file).map_err(LoadAssetError::other)?;
 
-        let pipeline_definition: PipelineDefinition = toml::from_str(&pipeline_file)
-            .map_err(LoadAssetError::other)?;
+            let pipeline_definition: PipelineDefinition = toml::from_str(&pipeline_file)
+                .map_err(LoadAssetError::other)?;
 
-        let mut shader_modules: HashMap<String, String> = HashMap::new();
-        for module in pipeline_definition.shader_modules.iter() {
-            if shader_modules.contains_key(&module.name) {
-                continue;
+            // discover all necessary shader modules and load their sources
+            let mut shader_modules: HashMap<String, String> = HashMap::new();
+            for module in pipeline_definition.shader_modules.iter() {
+                if shader_modules.contains_key(&module.name) {
+                    continue;
+                }
+
+                let module_path = AssetPath::new(&module.path).map_err(LoadAssetError::InvalidPath)?;
+                let module_path = path.resolve(module_path.clone()).ok_or_else(|| LoadAssetError::NotFound(module_path))?;
+
+                let mut module_file = source.open_asset_file(&module_path).await?;
+                let module_file = module_file.read_fully().await;
+                let module_file = String::from_utf8(module_file).map_err(LoadAssetError::other)?;
+
+                shader_modules.insert(module.name.clone(), module_file);
             }
 
-            let module_path = AssetPath::new(&module.path).map_err(LoadAssetError::InvalidPath)?;
-            let module_path = path.resolve(module_path.clone()).ok_or_else(|| LoadAssetError::NotFound(module_path))?;
-
-            let mut module_file = source.open_asset_file(&module_path).await?;
-            let module_file = module_file.read_fully().await;
-            let module_file = String::from_utf8(module_file).map_err(LoadAssetError::other)?;
-
-            shader_modules.insert(module.name.clone(), module_file);
+            Ok(Box::new(RenderPipelineAsset {
+                shader_modules,
+                definition: pipeline_definition,
+            }))
         }
-
-        Ok(Box::new(RenderPipelineAsset {
-            shader_modules,
-            definition: pipeline_definition,
-        }))
     }
 }

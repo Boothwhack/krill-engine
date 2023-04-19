@@ -3,16 +3,14 @@ pub mod pipeline;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::iter::once;
-use std::mem::{size_of};
 use std::ops::Range;
 
-use wgpu::{BufferDescriptor, ColorTargetState, FragmentState, include_wgsl, Label, LoadOp, Operations, RenderPassColorAttachment, RenderPassDescriptor, RenderPipelineDescriptor, RequestAdapterOptions, ShaderModuleDescriptor, ShaderSource, TextureViewDescriptor, vertex_attr_array, VertexState};
+use wgpu::{BufferDescriptor, ColorTargetState, FragmentState, Label, LoadOp, Operations, RenderPassColorAttachment, RenderPassDescriptor, RenderPipelineDescriptor, RequestAdapterOptions, ShaderModuleDescriptor, ShaderSource, TextureViewDescriptor, VertexState};
 
 pub use wgpu::BufferUsages;
 use utils::{CompactList};
 pub use utils::Handle;
-use crate::pipeline::RenderPipelineAsset;
-use crate::pipeline::serial::{TargetFormat, VertexFormatDefinition, VertexShaderStepMode};
+use crate::pipeline::serial::{RenderPipelineAsset, TargetFormat, VertexFormatDefinition, VertexShaderStepMode};
 
 pub type TextureFormat = wgpu::TextureFormat;
 
@@ -154,9 +152,8 @@ impl DeviceContext {
         Self::ensure_buffer_capacity(&self.device, buffer, size);
     }
 
-    // TODO: Clean up!
     pub fn create_pipeline_from_asset(&mut self, asset: RenderPipelineAsset, surface_format: Option<TextureFormat>) -> Handle<Pipeline> {
-        let modules: HashMap<String, _> = asset.shader_modules
+        let modules: HashMap<_, _> = asset.shader_modules
             .into_iter()
             .map(|(name, source)| {
                 let shader = self.device.create_shader_module(ShaderModuleDescriptor {

@@ -18,5 +18,5 @@ utils = { path = "../utils" }
 wgpu = "0.15"
 
 [dev-dependencies]
-winit = "0.28"
+winit = "0.27"
 tokio = { version = "1.27", features = ["full"] }

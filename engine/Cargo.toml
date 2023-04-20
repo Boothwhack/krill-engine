@@ -11,5 +11,5 @@ async-trait = "0.1"
 ecs = { path = "../ecs" }
 frunk = "0.4"
 render = { path = "../render" }
-winit = "0.28"
+winit = "0.27"
 raw-window-handle = "0.5"

@@ -26,4 +26,4 @@ web-sys = { version = "0.3", features = [
     "Window",
 ] }
 wgpu = { version = "0.15", features = ["webgl"] }
-winit = "0.28"
+winit = { version = "0.27", features = ["css-size"] }

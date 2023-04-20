@@ -1,6 +1,9 @@
 use std::panic;
+use wasm_bindgen::closure::Closure;
+use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen_futures::spawn_local;
+use web_sys::UiEvent;
 use engine::asset_resource::web::WithWebAssetSourceExt;
 use engine::process::{ProcessBuilder, ProcessInfo};
 use engine::resource::ResourceList;
@@ -34,6 +37,7 @@ fn main() {
 
                 let window = winit_surface.window();
                 let canvas = window.canvas();
+                canvas.set_id("krill");
 
                 let window = web_sys::window().unwrap();
                 let document = window.document().unwrap();

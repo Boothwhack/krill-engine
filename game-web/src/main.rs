@@ -8,7 +8,7 @@ use engine::winit_surface::{RunWinitSurfaceExt, WGPURenderExt, WinitSurfaceResou
 use game::{run_game, setup_game};
 use winit::platform::web::WindowExtWebSys;
 
-#[wasm_bindgen(start)]
+// #[wasm_bindgen(start)]
 fn main() {
     panic::set_hook(Box::new(console_error_panic_hook::hook));
     console_log::init_with_level(log::Level::Debug).unwrap();
@@ -21,6 +21,9 @@ fn main() {
             .location()
             .href()
             .unwrap();
+        let base_url = web_sys::Url::new_with_base("assets/", &base_url)
+            .unwrap()
+            .href();
 
         ProcessBuilder::new(ProcessInfo)
             .with_winit_surface()

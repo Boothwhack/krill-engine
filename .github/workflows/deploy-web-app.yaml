@@ -6,13 +6,11 @@ jobs:
     steps:
       - uses: actions-rs/install@v0.1.2
         with:
-          crate: wasm-pack
+          crate: trunk
           use-tool-cache: true
       - uses: actions/checkout@v3
       - working-directory: game-web
-        run: npm ci
-      - working-directory: game-web
-        run: npm run build
+        run: trunk build
       - name: Upload Github Pages artifact
         uses: actions/upload-pages-artifact@v1
         with:

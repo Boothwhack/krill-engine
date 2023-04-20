@@ -8,6 +8,7 @@ jobs:
         with:
           crate: trunk
           use-tool-cache: true
+      - run: rustup target add wasm32-unknown-unknown
       - uses: actions/checkout@v3
       - working-directory: game-web
         run: trunk build

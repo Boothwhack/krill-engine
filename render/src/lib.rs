@@ -253,6 +253,7 @@ impl DeviceContext {
             .iter()
             .map(|buffer| {
                 let mut offset_accumulator: u64 = 0;
+                let mut location_accumulator: u32 = 0;
                 OwnedVertexBufferLayout {
                     step_mode: match buffer.step_mode {
                         VertexShaderStepMode::Vertex => wgpu::VertexStepMode::Vertex,
@@ -260,8 +261,7 @@ impl DeviceContext {
                     },
                     array_stride: buffer.stride(),
                     attributes: buffer.attributes.iter()
-                        .enumerate()
-                        .map(|(i, attr)| {
+                        .map(|attr| {
                             let format = match attr.format {
                                 VertexFormatDefinition::Float32(1) => wgpu::VertexFormat::Float32,
                                 VertexFormatDefinition::Float32(2) => wgpu::VertexFormat::Float32x2,
@@ -278,9 +278,10 @@ impl DeviceContext {
                             let format_size = format.size();
                             let attr = wgpu::VertexAttribute {
                                 format,
-                                shader_location: i as _,
+                                shader_location: location_accumulator,
                                 offset: offset_accumulator,
                             };
+                            location_accumulator += 1;
                             offset_accumulator += format_size;
                             attr
                         })

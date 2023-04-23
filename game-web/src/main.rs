@@ -1,17 +1,15 @@
 use std::panic;
-use wasm_bindgen::closure::Closure;
-use wasm_bindgen::JsCast;
-use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen_futures::spawn_local;
-use web_sys::UiEvent;
-use engine::asset_resource::web::WithWebAssetSourceExt;
-use engine::process::{ProcessBuilder, ProcessInfo};
-use engine::resource::ResourceList;
-use engine::winit_surface::{RunWinitSurfaceExt, WGPURenderExt, WinitSurfaceResource, WithWinitSurfaceExt};
-use game::{run_game, setup_game};
+use engine::asset_resource::web::WebRequestAssetSourceExt;
+use engine::process::ProcessBuilder;
+use engine::surface::{RunExt, SurfaceResource};
+use engine::utils::HList;
+use engine::utils::hlist::Has;
+use engine::wgpu_render::{WGPUCompatible, WGPURenderSetupExt};
+use engine::winit_surface::{WinitSetupExt, WinitSurface};
 use winit::platform::web::WindowExtWebSys;
+use game::{run_game, setup_game};
 
-// #[wasm_bindgen(start)]
 fn main() {
     panic::set_hook(Box::new(console_error_panic_hook::hook));
     console_log::init_with_level(log::Level::Debug).unwrap();
@@ -28,14 +26,14 @@ fn main() {
             .unwrap()
             .href();
 
-        ProcessBuilder::new(ProcessInfo)
-            .with_winit_surface()
-            .setup(|resources| {
+        ProcessBuilder::new()
+            .setup_winit()
+            .setup(|resources: HList!(SurfaceResource<WinitSurface>)| {
                 log::info!("Adding canvas element...");
 
-                let winit_surface: &WinitSurfaceResource = resources.get();
+                let winit_surface: &SurfaceResource<WinitSurface> = resources.get();
 
-                let window = winit_surface.window();
+                let window = winit_surface.raw_window();
                 let canvas = window.canvas();
                 canvas.set_id("krill");
 
@@ -49,8 +47,8 @@ fn main() {
 
                 resources
             })
-            .with_wgpu_render().await
-            .with_web_asset_source(base_url)
+            .setup_wgpu_render().await
+            .setup_web_request_asset_source(base_url)
             .setup_async(setup_game).await
             .run(run_game);
     });

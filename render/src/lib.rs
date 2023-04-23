@@ -249,46 +249,48 @@ impl DeviceContext {
                 }))
                 .collect::<Vec<_>>()
             );
-        let vertex_buffers = asset.definition.vertex_shader.buffers
-            .iter()
-            .map(|buffer| {
-                let mut offset_accumulator: u64 = 0;
-                let mut location_accumulator: u32 = 0;
-                OwnedVertexBufferLayout {
-                    step_mode: match buffer.step_mode {
-                        VertexShaderStepMode::Vertex => wgpu::VertexStepMode::Vertex,
-                        VertexShaderStepMode::Instance => wgpu::VertexStepMode::Instance,
-                    },
-                    array_stride: buffer.stride(),
-                    attributes: buffer.attributes.iter()
-                        .map(|attr| {
-                            let format = match attr.format {
-                                VertexFormatDefinition::Float32(1) => wgpu::VertexFormat::Float32,
-                                VertexFormatDefinition::Float32(2) => wgpu::VertexFormat::Float32x2,
-                                VertexFormatDefinition::Float32(3) => wgpu::VertexFormat::Float32x3,
-                                VertexFormatDefinition::Float32(4) => wgpu::VertexFormat::Float32x4,
+        let vertex_buffers = {
+            let mut location_accumulator: u32 = 0;
+            asset.definition.vertex_shader.buffers
+                .iter()
+                .map(|buffer| {
+                    let mut offset_accumulator: u64 = 0;
+                    OwnedVertexBufferLayout {
+                        step_mode: match buffer.step_mode {
+                            VertexShaderStepMode::Vertex => wgpu::VertexStepMode::Vertex,
+                            VertexShaderStepMode::Instance => wgpu::VertexStepMode::Instance,
+                        },
+                        array_stride: buffer.stride(),
+                        attributes: buffer.attributes.iter()
+                            .map(|attr| {
+                                let format = match attr.format {
+                                    VertexFormatDefinition::Float32(1) => wgpu::VertexFormat::Float32,
+                                    VertexFormatDefinition::Float32(2) => wgpu::VertexFormat::Float32x2,
+                                    VertexFormatDefinition::Float32(3) => wgpu::VertexFormat::Float32x3,
+                                    VertexFormatDefinition::Float32(4) => wgpu::VertexFormat::Float32x4,
 
-                                VertexFormatDefinition::Float64(1) => wgpu::VertexFormat::Float64,
-                                VertexFormatDefinition::Float64(2) => wgpu::VertexFormat::Float64x2,
-                                VertexFormatDefinition::Float64(3) => wgpu::VertexFormat::Float64x3,
-                                VertexFormatDefinition::Float64(4) => wgpu::VertexFormat::Float64x4,
+                                    VertexFormatDefinition::Float64(1) => wgpu::VertexFormat::Float64,
+                                    VertexFormatDefinition::Float64(2) => wgpu::VertexFormat::Float64x2,
+                                    VertexFormatDefinition::Float64(3) => wgpu::VertexFormat::Float64x3,
+                                    VertexFormatDefinition::Float64(4) => wgpu::VertexFormat::Float64x4,
 
-                                _ => panic!("vertex attribute definition should be validated when deserializing"),
-                            };
-                            let format_size = format.size();
-                            let attr = wgpu::VertexAttribute {
-                                format,
-                                shader_location: location_accumulator,
-                                offset: offset_accumulator,
-                            };
-                            location_accumulator += 1;
-                            offset_accumulator += format_size;
-                            attr
-                        })
-                        .collect(),
-                }
-            })
-            .collect::<Vec<_>>();
+                                    _ => panic!("vertex attribute definition should be validated when deserializing"),
+                                };
+                                let format_size = format.size();
+                                let attr = wgpu::VertexAttribute {
+                                    format,
+                                    shader_location: location_accumulator,
+                                    offset: offset_accumulator,
+                                };
+                                location_accumulator += 1;
+                                offset_accumulator += format_size;
+                                attr
+                            })
+                            .collect(),
+                    }
+                })
+                .collect::<Vec<_>>()
+        };
         let bind_group_layouts: Vec<_> = asset.definition.bind_groups
             .iter()
             .map(|def| bind_group_layouts[&def.layout])
@@ -431,7 +433,7 @@ impl<'a> CommandEncoderContext<'a> {
         for (index, bind_group) in pass.bind_groups.iter().enumerate() {
             encoder_pass.set_bind_group(index as _, bind_group.deref(), &[]);
         }
-        encoder_pass.draw(pass.vertices.clone(), 0..1);
+        encoder_pass.draw(pass.vertices, pass.instances);
     }
 }
 
@@ -470,5 +472,6 @@ pub struct RenderPass {
     pub vertex_buffers: Vec<Option<Handle<Buffer>>>,
     pub targets: Vec<Target>,
     pub vertices: Range<u32>,
+    pub instances: Range<u32>,
     pub bind_groups: Vec<BindGroup>,
 }

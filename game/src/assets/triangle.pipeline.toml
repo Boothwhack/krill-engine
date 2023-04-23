@@ -18,6 +18,16 @@ attributes = [
     { format = "f32x4" }
 ]
 
+[[vertex-shader.buffers]]
+step-mode = "instance"
+attributes = [
+    # Transformation matrix
+    { format = "f32x4" },
+    { format = "f32x4" },
+    { format = "f32x4" },
+    { format = "f32x4" }
+]
+
 [fragment-shader]
 shader-module = "triangle"
 entrypoint = "fs_main"

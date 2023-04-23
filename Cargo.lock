@@ -390,6 +390,9 @@ checksum = "9ea835d29036a4087793836fa931b08837ad5e957da9e23886b29586fb9b6650"
 [[package]]
 name = "ecs"
 version = "0.1.0"
+dependencies = [
+ "frunk",
+]
 
 [[package]]
 name = "encoding_rs"
@@ -407,9 +410,10 @@ dependencies = [
  "assets",
  "async-trait",
  "ecs",
- "frunk",
+ "never-say-never",
  "raw-window-handle 0.5.2",
  "render",
+ "utils",
  "winit",
 ]
 
@@ -1269,6 +1273,12 @@ checksum = "3cf2aae958bd232cac5069850591667ad422d263686d75b52a065f9badeee5a3"
 dependencies = [
  "jni-sys",
 ]
+
+[[package]]
+name = "never-say-never"
+version = "6.6.666"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf5a574dadd7941adeaa71823ecba5e28331b8313fb2e1c6a5c7e5981ea53ad6"
 
 [[package]]
 name = "nix"

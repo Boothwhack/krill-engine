@@ -1,85 +1,83 @@
+use std::ops::{Deref, DerefMut};
 use assets::source::AssetSource;
-use crate::process::ProcessBuilder;
-use crate::resource::ResourceList;
 
 pub struct AssetSourceResource<A: AssetSource> {
     asset_source: A,
 }
 
 impl<A: AssetSource> AssetSourceResource<A> {
-    pub fn get(&self) -> &A {
+    pub fn new(asset_source: A) -> Self {
+        AssetSourceResource { asset_source }
+    }
+}
+
+impl<A: AssetSource> DerefMut for AssetSourceResource<A> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.asset_source
+    }
+}
+
+impl<A: AssetSource> Deref for AssetSourceResource<A> {
+    type Target = A;
+
+    fn deref(&self) -> &Self::Target {
         &self.asset_source
+    }
+}
+
+#[cfg(not(target_family = "wasm"))]
+pub mod desktop {
+    use std::path::PathBuf;
+    use assets::source::desktop_fs::DirectoryAssetSource;
+    use utils::{HList, hlist};
+    use utils::hlist::{Concat, IntoShape};
+    use crate::asset_resource::AssetSourceResource;
+    use crate::process::{ProcessBuilder, ProcessSetupStep};
+
+    pub trait DirectoryAssetSourceExt<R, I, P: Into<PathBuf>> {
+        type Output;
+
+        fn setup_directory_asset_source(self, path: P) -> Self::Output;
+    }
+
+    impl<R, I, P> DirectoryAssetSourceExt<R, I, P> for ProcessBuilder<R>
+        where P: Into<PathBuf>,
+              R: IntoShape<HList!(), I>,
+              R::Remainder: Concat {
+        type Output = ProcessBuilder<<R::Remainder as Concat>::Concatenated<HList!(AssetSourceResource<DirectoryAssetSource>)>>;//ProcessBuilderWith<R, I, DirectoryAssetSourceSetupStep<P>>;
+
+        fn setup_directory_asset_source(self, path: P) -> Self::Output {
+            self.setup(move |_| {
+                hlist!(AssetSourceResource::new(DirectoryAssetSource::new(path)))
+            })
+        }
     }
 }
 
 #[cfg(target_family = "wasm")]
 pub mod web {
     use assets::source::web_request::{IntoUrl, WebRequestAssetSource};
+    use utils::{HList, hlist};
+    use utils::hlist::{Concat, IntoShape};
     use crate::asset_resource::AssetSourceResource;
-    use crate::process::ProcessBuilder;
-    use crate::resource::ResourceList;
+    use crate::process::{ProcessBuilder};
 
-    pub trait WithWebAssetSourceExt<R: ResourceList> {
-        fn with_web_asset_source<U: IntoUrl>(self, base_url: U) -> ProcessBuilder<R::WithResource<AssetSourceResource<WebRequestAssetSource>>>;
+    pub trait WebRequestAssetSourceExt<R, I, U: IntoUrl> {
+        type Output;
+
+        fn setup_web_request_asset_source(self, url: U) -> Self::Output;
     }
 
-    impl<R: ResourceList> WithWebAssetSourceExt<R> for ProcessBuilder<R> {
-        fn with_web_asset_source<U: IntoUrl>(self, base_url: U) -> ProcessBuilder<R::WithResource<AssetSourceResource<WebRequestAssetSource>>> {
-            self.setup(|resources| {
-                let asset_source = WebRequestAssetSource::new(base_url)
-                    .expect("invalid asset source url");
-                resources.with_resource(AssetSourceResource { asset_source })
+    impl<R, I, U> WebRequestAssetSourceExt<R, I, U> for ProcessBuilder<R>
+        where U: IntoUrl,
+              R: IntoShape<HList!(), I>,
+              R::Remainder: Concat {
+        type Output = ProcessBuilder<<R::Remainder as Concat>::Concatenated<HList!(AssetSourceResource<WebRequestAssetSource>)>>;//ProcessBuilderWith<R, I, DirectoryAssetSourceSetupStep<P>>;
+
+        fn setup_web_request_asset_source(self, url: U) -> Self::Output {
+            self.setup(move |_| {
+                hlist!(AssetSourceResource::new(WebRequestAssetSource::new(url).unwrap()))
             })
         }
     }
 }
-
-/*#[cfg(target_family = "wasm")]
-pub type PlatformAssetSource = WebRequestAssetSource;*/
-
-#[cfg(not(target_family = "wasm"))]
-pub mod desktop {
-    use std::path::PathBuf;
-    use assets::source::desktop_fs::DirectoryAssetSource;
-    use crate::asset_resource::AssetSourceResource;
-    use crate::process::ProcessBuilder;
-    use crate::resource::ResourceList;
-
-    pub trait WithDirectoryAssetSourceExt<R: ResourceList> {
-        fn with_directory_asset_source<P: Into<PathBuf>>(self, path: P) -> ProcessBuilder<R::WithResource<AssetSourceResource<DirectoryAssetSource>>>;
-    }
-
-    impl<R: ResourceList> WithDirectoryAssetSourceExt<R> for ProcessBuilder<R> {
-        fn with_directory_asset_source<P: Into<PathBuf>>(self, path: P) -> ProcessBuilder<R::WithResource<AssetSourceResource<DirectoryAssetSource>>> {
-            self.setup(|resources| {
-                let asset_source = DirectoryAssetSource::new(path);
-                resources.with_resource(AssetSourceResource { asset_source })
-            })
-        }
-    }
-}
-
-/*#[cfg(not(target_family = "wasm"))]
-pub type PlatformAssetSource = DirectoryAssetSource;*/
-
-/*pub trait WithAssetResourceExt<R: ResourceList, A: AssetSource> {
-    fn with_asset_source(self) -> ProcessBuilder<R::WithResource<A>>;
-}
-
-#[cfg(target_family = "wasm")]
-impl<R: ResourceList> WithAssetResourceExt<R, assets::source::web_request::WebRequestAssetSource> for ProcessBuilder<R> {
-    fn with_asset_source(self) -> ProcessBuilder<R::WithResource<assets::source::web_request::WebRequestAssetSource>> {
-        use assets::source::web_request::WebRequestAssetSource;
-
-        self.setup(|resources| resources.with_resource(WebRequestAssetSource::default()))
-    }
-}
-
-#[cfg(not(target_family = "wasm"))]
-impl<R: ResourceList> WithAssetResourceExt<R, assets::source::desktop_fs::DirectoryAssetSource> for ProcessBuilder<R> {
-    fn with_asset_source(self) -> ProcessBuilder<R::WithResource<assets::source::desktop_fs::DirectoryAssetSource>> {
-        use assets::source::desktop_fs::DirectoryAssetSource;
-
-        self.setup(|resources| resources.with_resource(DirectoryAssetSource::new("assets")))
-    }
-}*/

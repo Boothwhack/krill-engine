@@ -253,7 +253,7 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                         pipeline: game.pipeline,
                         vertices: 0..3,
                         targets: vec![Target::ScreenTarget {
-                            clear: Some(Color::new(30.0 / 255.0, 30.0 / 255.0, 30.0 / 255.0, 1.0)),
+                            clear: Some(Color::rgb(0, 3, 22, 1.0)),
                         }],
                         vertex_buffers: vec![Some(game.vertex_buffer), Some(game.instance_buffer)],
                         bind_groups: vec![game.camera_bind_group.clone()],

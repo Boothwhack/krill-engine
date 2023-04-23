@@ -7,7 +7,7 @@ use std::iter::once;
 use std::ops::{Deref, Range};
 use std::rc::Rc;
 
-use wgpu::{BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BufferBinding, BufferDescriptor, ColorTargetState, FragmentState, Label, LoadOp, Operations, PipelineLayoutDescriptor, RenderPassColorAttachment, RenderPassDescriptor, RenderPipelineDescriptor, RequestAdapterOptions, ShaderModuleDescriptor, ShaderSource, TextureViewDescriptor, VertexState};
+use wgpu::{BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BufferDescriptor, ColorTargetState, FragmentState, Label, LoadOp, Operations, PipelineLayoutDescriptor, RenderPassColorAttachment, RenderPassDescriptor, RenderPipelineDescriptor, RequestAdapterOptions, ShaderModuleDescriptor, ShaderSource, TextureViewDescriptor, VertexState};
 
 pub use wgpu::BufferUsages;
 use utils::{CompactList};
@@ -44,19 +44,19 @@ pub struct WGPUContext {
 impl WGPUContext {
     // enumerate_adapters is not available in wasm environments
     #[cfg(not(target_family = "wasm"))]
-    fn print_adapters(instance: &wgpu::Instance) {
-        println!("Adapters:");
+    fn log_adapters(instance: &wgpu::Instance) {
+        log::info!("Adapters:");
         for adapter in instance.enumerate_adapters(wgpu::Backends::all()) {
-            println!("  {:?}", adapter.get_info());
+            log::info!("  {:?}", adapter.get_info());
         }
     }
 
     #[cfg(target_family = "wasm")]
-    fn print_adapters(_: &wgpu::Instance) {}
+    fn log_adapters(_: &wgpu::Instance) {}
 
     pub async fn new() -> Option<Self> {
         let instance = wgpu::Instance::default();
-        WGPUContext::print_adapters(&instance);
+        WGPUContext::log_adapters(&instance);
 
         log::info!("Got WGPU instance.");
 
@@ -363,10 +363,20 @@ impl SurfaceContext {
     }
 
     pub fn configure(&mut self, device: &DeviceContext, width: u32, height: u32) {
-        let surface_config = self.surface.get_default_config(&device.adapter, width, height).expect("default surface configuration");
-        println!("Surface capabilities: {:?}", self.surface.get_capabilities(&device.adapter));
-        println!("Default surface configuration: {:?}", surface_config);
-        // surface_config.format = wgpu::TextureFormat::Rgba8UnormSrgb;
+        let mut surface_config = self.surface.get_default_config(&device.adapter, width, height).expect("default surface configuration");
+        let capabilities = self.surface.get_capabilities(&device.adapter);
+        log::info!("Default surface configuration: {:?}", surface_config);
+        log::info!("Surface capabilities: {:?}", capabilities);
+
+        // prefer non-srgb for now while we don't support textures
+        surface_config.format = match surface_config.format {
+            TextureFormat::Rgba8UnormSrgb if capabilities.formats.contains(&TextureFormat::Rgba8Unorm) => TextureFormat::Rgba8Unorm,
+            TextureFormat::Bgra8UnormSrgb if capabilities.formats.contains(&TextureFormat::Bgra8Unorm) => TextureFormat::Bgra8Unorm,
+            _ => surface_config.format,
+        };
+
+        log::info!("Configuring surface with config: {:?}", surface_config);
+
         self.surface.configure(&device.device, &surface_config);
         self.surface_config = Some(surface_config);
     }
@@ -448,6 +458,10 @@ pub struct Color {
 impl Color {
     pub fn new(r: f32, g: f32, b: f32, a: f32) -> Color {
         Color { r, g, b, a }
+    }
+
+    pub fn rgb(r: u8, g: u8, b: u8, a: f32) -> Color {
+        Color::new(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, a)
     }
 }
 

@@ -224,16 +224,21 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                 let elapsed_since_previous_frame = game.previous_frame.elapsed().as_secs_f32();
                 game.previous_frame = Instant::now();
 
-                let move_direction = Vector3::new(
+                /*let move_direction = Vector3::new(
                     if game.input_state.left { -1.0 } else { 0.0 }
                         + if game.input_state.right { 1.0 } else { 0.0 },
                     if game.input_state.down { -1.0 } else { 0.0 }
                         + if game.input_state.up { 1.0 } else { 0.0 },
                     0.0,
-                ) * 0.5 * elapsed_since_previous_frame;
+                ) * 0.5 * elapsed_since_previous_frame;*/
 
                 let mut transforms = game.world.components_mut::<Transform>();
                 let players = game.world.components::<Player>();
+
+                let rotation_speed = 1.0;
+                let rotation = (if game.input_state.left { 1.0 } else { 0.0 } +
+                    if game.input_state.right { -1.0 } else { 0.0 }) * rotation_speed * elapsed_since_previous_frame;
+                log::info!("Rotation: {}", rotation);
 
                 for entity in game
                     .world
@@ -242,8 +247,8 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                 {
                     if let Some(transform) = transforms.get(entity) {
                         let transform = Transform {
-                            position: transform.position + move_direction,
-                            rotation: 0.0,
+                            position: transform.position,
+                            rotation: transform.rotation + rotation,
                         };
                         transforms.put(entity, transform);
                     }
@@ -278,12 +283,9 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                     }
                 }
 
-                let elapsed = game.start_time.elapsed().as_secs_f32() * 2.0;
-                let spin_radius = 0.1;
                 let instances = player_transforms.into_iter()
                     .map(|Transform { position, rotation }| {
-                        let position = position + Vec3::new(elapsed.sin(), elapsed.cos(), 0.0) * spin_radius;
-                        let translation = Matrix4::new_translation(&position);
+                        let translation = Matrix4::new_translation(position);
                         let rotation = Rotation3::from_euler_angles(0.0, 0.0, *rotation);
                         rotation.to_homogeneous() * translation
                     })
@@ -317,7 +319,6 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
         }
         SurfaceEvent::CloseRequested => SurfaceEventResult::Exit(None),
         SurfaceEvent::DeviceEvent(DeviceEvent::Key(key)) => {
-            println!("Key event: {:?}", key);
             let state = key.state == ElementState::Pressed;
             match key.virtual_keycode {
                 Some(VirtualKeyCode::Up) => game.input_state.up = state,

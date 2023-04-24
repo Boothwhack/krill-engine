@@ -9,5 +9,6 @@ edition = "2021"
 engine = { path = "../engine" }
 futures = { version = "0.3", features = ["executor"] }
 instant = { version = "0.1", features = ["wasm-bindgen"] }
+log = "0.4"
 nalgebra = "0.32"
 winit = "0.27"

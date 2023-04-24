@@ -44,6 +44,7 @@ struct Transform {
     position: Vec3,
     rotation: f32,
     velocity: Vec3,
+    angular_velocity: f32,
     transient: bool,
     size: f32,
 }
@@ -349,12 +350,14 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
 
                         let size = 1.0 - (random::<f32>() * 0.5 - 0.5);
                         let rotation = random::<f32>() * f32::pi() * 2.0;
+                        let angular_velocity = random::<f32>() * 0.4;
                         create.push((
                             Transform {
                                 position,
                                 rotation,
                                 size: 1.5 * size,
                                 velocity,
+                                angular_velocity,
                                 ..Transform::default()
                             },
                             Shape::Meteor,
@@ -402,6 +405,8 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                                     velocity = velocity.normalize() * max_speed;
                                 }
                             }
+
+                            rotation += transform.angular_velocity * elapsed_since_previous_frame;
 
                             let position = transform.position + velocity * elapsed_since_previous_frame;
                             let x = if position.x > game.bounds.x {
@@ -506,11 +511,13 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                                     // ±0.25
                                     let angle_random = random::<f32>() * 0.5 - 0.25;
                                     let size_random = 1.0 + size_distribution;
+                                    let spin_direction = random::<f32>().signum();
                                     create.push((
                                         Transform {
                                             rotation,
                                             velocity: Rotation3::from_axis_angle(&Vec3::z_axis(), split_angle + angle_random) * meteor_transform.velocity * split_velocity,
                                             size: meteor_transform.size * split_size * size_random,
+                                            angular_velocity: meteor_transform.angular_velocity * spin_direction + spin_direction * (random::<f32>() * 0.2 + 0.1),
                                             ..meteor_transform.clone()
                                         },
                                         Shape::Meteor,
@@ -519,11 +526,13 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                                     let rotation = random::<f32>() * f32::pi() * 2.0;
                                     let angle_random = random::<f32>() * 0.5 - 0.25;
                                     let size = 1.0 - size_distribution;
+                                    let spin_direction = random::<f32>().signum();
                                     create.push((
                                         Transform {
                                             rotation,
                                             velocity: Rotation3::from_axis_angle(&Vec3::z_axis(), -split_angle + angle_random) * meteor_transform.velocity * split_velocity,
                                             size: meteor_transform.size * split_size * size,
+                                            angular_velocity: meteor_transform.angular_velocity * spin_direction + spin_direction * (random::<f32>() * 0.2 + 0.1),
                                             ..meteor_transform.clone()
                                         },
                                         Shape::Meteor,

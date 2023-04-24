@@ -39,7 +39,7 @@ async fn main() {
     let asset_source = DirectoryAssetSource::new("assets");
 
     let pipeline_asset = asset_pipelines
-        .load_asset(AssetPath::new("/triangle.pipeline").unwrap(), TypeId::of::<RenderPipelineAsset>(), &asset_source)
+        .load_asset_of_type(AssetPath::new("/triangle.pipeline").unwrap(), TypeId::of::<RenderPipelineAsset>(), &asset_source)
         .await
         .expect("triangle render pipeline")
         .downcast::<RenderPipelineAsset>()

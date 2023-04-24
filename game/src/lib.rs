@@ -5,7 +5,7 @@ use engine::assets::AssetPipelines;
 use engine::ecs::world::World;
 use engine::render::bindgroup::serial::{BindGroupAssetPipeline, BindGroupLayoutAsset};
 use engine::render::pipeline::serial::{RenderPipelineAsset, RenderPipelineAssetPipeline};
-use engine::render::{BindGroup, BindGroupBinding, Buffer, BufferUsages, Color, Handle, Pipeline, RenderPass, Target};
+use engine::render::{BindGroup, BindGroupBinding, Buffer, BufferUsages, Color, DeviceContext, Handle, Pipeline, RenderPass, Target};
 use instant::Instant;
 use nalgebra::{Matrix4, Rotation3, Vector2, Vector3, Vector4};
 use std::any::TypeId;
@@ -13,6 +13,9 @@ use std::collections::HashMap;
 use std::mem::{size_of, size_of_val};
 use std::ops::Deref;
 use std::slice::from_raw_parts;
+use std::time::Duration;
+use float_ord::FloatOrd;
+use rand::random;
 use winit::event::{DeviceEvent, ElementState, VirtualKeyCode};
 use engine::surface::{SurfaceEvent, SurfaceEventResult};
 use engine::utils::{HList, hlist};
@@ -72,9 +75,18 @@ struct Sprite {
     vertices: u32,
 }
 
+fn data_bytes<T>(data: &[T]) -> &[u8] {
+    unsafe { from_raw_parts(data.as_ptr() as *const u8, size_of_val(data)) }
+}
+
 impl Sprite {
-    fn new(vertex_buffer: Handle<Buffer>, instance_buffer: Handle<Buffer>, vertices: u32) -> Self {
-        Sprite { vertex_buffer, instance_buffer, vertices }
+    fn new(device: &mut DeviceContext, vertices: &[Vec2]) -> Self {
+        let vertex_buffer = device.create_buffer(size_of_val(vertices), BufferUsages::VERTEX | BufferUsages::COPY_DST);
+        device.submit_buffer(vertex_buffer, 0, data_bytes(vertices));
+
+        let instance_buffer = device.create_buffer(4 * 4 * size_of::<f32>(), BufferUsages::VERTEX | BufferUsages::COPY_DST);
+
+        Sprite { vertex_buffer, instance_buffer, vertices: vertices.len() as _ }
     }
 }
 
@@ -97,37 +109,47 @@ pub struct GameResource {
     color_scheme_uniform_buffer: Handle<Buffer>,
     camera_bind_group: BindGroup,
     color_scheme_bind_group: BindGroup,
-    start_time: Instant,
+    previous_meteor: Instant,
     previous_frame: Instant,
     input_state: InputState,
     world: World,
     bounds: Vec2,
 }
 
-const SHIP_VERTICES: [f32; 2 * 4] = [
-    -0.3, -0.3,
-    0.0, -0.2,
-    0.0, 0.3,
-    0.3, -0.3,
+const SHIP_VERTICES: [Vec2; 4] = [
+    Vec2::new(-0.3, -0.3),
+    Vec2::new(0.0, -0.2),
+    Vec2::new(0.0, 0.3),
+    Vec2::new(0.3, -0.3),
 ];
 
-const METEOR_VERTICES: [f32; 2 * 8] = [
-    0.0, 0.5,
-    0.4, 0.4,
-    -0.4, 0.4,
-    0.5, 0.0,
-    -0.5, 0.0,
-    0.4, -0.4,
-    -0.4, -0.4,
-    0.0, -0.5
+const METEOR_VERTICES: [Vec2; 8] = [
+    Vec2::new(0.0, 0.5),
+    Vec2::new(0.4, 0.4),
+    Vec2::new(-0.4, 0.4),
+    Vec2::new(0.5, 0.0),
+    Vec2::new(-0.5, 0.0),
+    Vec2::new(0.4, -0.4),
+    Vec2::new(-0.4, -0.4),
+    Vec2::new(0.0, -0.5),
 ];
 
-const BULLET_VERTICES: [f32; 2 * 4] = [
-    0.04, -0.08,
-    0.04, 0.08,
-    -0.04, -0.08,
-    -0.04, 0.08,
+const BULLET_VERTICES: [Vec2; 4] = [
+    Vec2::new(0.04, -0.08),
+    Vec2::new(0.04, 0.08),
+    Vec2::new(-0.04, -0.08),
+    Vec2::new(-0.04, 0.08),
 ];
+
+fn calculate_game_bounds(width: u32, height: u32) -> Vec2 {
+    let aspect_ratio = width as f32 / height as f32;
+
+    if aspect_ratio > 1.0 {
+        Vec2::new(1.0, height as f32 / width as f32)
+    } else {
+        Vec2::new(aspect_ratio, 1.0)
+    }
+}
 
 pub async fn setup_game<A: AssetSource>(resources: HList!(WGPURenderResource, AssetSourceResource<A>)) -> HList!(GameResource, WGPURenderResource, AssetSourceResource<A>) {
     let (mut render, resources): (WGPURenderResource, _) = resources.pick();
@@ -146,84 +168,40 @@ pub async fn setup_game<A: AssetSource>(resources: HList!(WGPURenderResource, As
         AssetPipelines::new(pipelines)
     };
 
-    let pipeline_asset = asset_pipelines
-        .load_asset(
-            AssetPath::new("/game.pipeline").unwrap(),
-            TypeId::of::<RenderPipelineAsset>(),
-            asset_source.deref(),
-        )
+    let pipeline_asset: RenderPipelineAsset = asset_pipelines
+        .load_asset(AssetPath::new("/game.pipeline").unwrap(), asset_source.deref())
         .await
-        .expect("triangle render pipeline")
-        .downcast::<RenderPipelineAsset>()
-        .expect("render pipeline asset");
-
-    let camera_bind_group_asset = asset_pipelines
-        .load_asset(
-            AssetPath::new("/camera.bindgroup").unwrap(),
-            TypeId::of::<BindGroupLayoutAsset>(),
-            asset_source.deref(),
-        )
+        .expect("game render pipeline");
+    let camera_bind_group_asset: BindGroupLayoutAsset = asset_pipelines
+        .load_asset(AssetPath::new("/camera.bindgroup").unwrap(), asset_source.deref())
         .await
-        .expect("camera bind group layout")
-        .downcast::<BindGroupLayoutAsset>()
-        .expect("bind group layout asset");
-    let color_scheme_bind_group_asset = asset_pipelines
-        .load_asset(
-            AssetPath::new("/color-scheme.bindgroup").unwrap(),
-            TypeId::of::<BindGroupLayoutAsset>(),
-            asset_source.deref(),
-        )
+        .expect("camera bind group layout");
+    let color_scheme_bind_group_asset: BindGroupLayoutAsset = asset_pipelines
+        .load_asset(AssetPath::new("/color-scheme.bindgroup").unwrap(), asset_source.deref())
         .await
-        .expect("color scheme bind group layout")
-        .downcast::<BindGroupLayoutAsset>()
-        .expect("bind group layout asset");
+        .expect("color scheme bind group layout");
 
     let surface_format = render.surface().format();
 
     let mut bind_group_layouts = HashMap::new();
     let camera_bind_group_layout = render
         .device_mut()
-        .create_bind_group_layout_from_asset(*camera_bind_group_asset);
+        .create_bind_group_layout_from_asset(camera_bind_group_asset);
     bind_group_layouts.insert("camera".to_owned(), camera_bind_group_layout);
     let color_scheme_bind_group_layout = render
         .device_mut()
-        .create_bind_group_layout_from_asset(*color_scheme_bind_group_asset);
+        .create_bind_group_layout_from_asset(color_scheme_bind_group_asset);
     bind_group_layouts.insert("color-scheme".to_owned(), color_scheme_bind_group_layout);
 
     let pipeline = render.device_mut().create_pipeline_from_asset(
-        *pipeline_asset,
+        pipeline_asset,
         surface_format,
         bind_group_layouts,
     );
-    let ship_vertex_buffer = render.device_mut().create_buffer(
-        size_of_val(&SHIP_VERTICES),
-        BufferUsages::VERTEX | BufferUsages::COPY_DST,
-    );
 
-    {
-        let data = unsafe { from_raw_parts(SHIP_VERTICES.as_ptr() as *const u8, size_of_val(&SHIP_VERTICES)) };
-        render.device().submit_buffer(ship_vertex_buffer, 0, data);
-    }
-
-    let meteor_vertex_buffer = render.device_mut().create_buffer(
-        size_of_val(&METEOR_VERTICES),
-        BufferUsages::VERTEX | BufferUsages::COPY_DST,
-    );
-
-    {
-        let data = unsafe { from_raw_parts(METEOR_VERTICES.as_ptr() as *const u8, size_of_val(&METEOR_VERTICES)) };
-        render.device().submit_buffer(meteor_vertex_buffer, 0, data);
-    }
-
-    let bullet_vertex_buffer = render.device_mut().create_buffer(
-        size_of_val(&METEOR_VERTICES),
-        BufferUsages::VERTEX | BufferUsages::COPY_DST,
-    );
-
-    {
-        let data = unsafe { from_raw_parts(BULLET_VERTICES.as_ptr() as *const u8, size_of_val(&BULLET_VERTICES)) };
-        render.device().submit_buffer(bullet_vertex_buffer, 0, data);
-    }
+    let ship_sprite = Sprite::new(render.device_mut(), &SHIP_VERTICES);
+    let meteor_sprite = Sprite::new(render.device_mut(), &METEOR_VERTICES);
+    let bullet_sprite = Sprite::new(render.device_mut(), &BULLET_VERTICES);
 
     let camera_uniform_buffer = render.device_mut().create_buffer(
         4 * 4 * size_of::<f32>(),
@@ -246,19 +224,6 @@ pub async fn setup_game<A: AssetSource>(resources: HList!(WGPURenderResource, As
         &[BindGroupBinding::Buffer(color_scheme_uniform_buffer_ref)],
     );
 
-    let ship_instance_buffer = render.device_mut().create_buffer(
-        4 * 4 * size_of::<f32>(),
-        BufferUsages::VERTEX | BufferUsages::COPY_DST,
-    );
-    let meteor_instance_buffer = render.device_mut().create_buffer(
-        4 * 4 * size_of::<f32>(),
-        BufferUsages::VERTEX | BufferUsages::COPY_DST,
-    );
-    let bullet_instance_buffer = render.device_mut().create_buffer(
-        4 * 4 * size_of::<f32>(),
-        BufferUsages::VERTEX | BufferUsages::COPY_DST,
-    );
-
     let mut world = World::default()
         .with_component::<Player>()
         .with_component::<Meteor>()
@@ -273,41 +238,28 @@ pub async fn setup_game<A: AssetSource>(resources: HList!(WGPURenderResource, As
         world.components_mut::<Transform>().put(player, Transform { repeats: true, size: 1.0, ..Transform::default() });
         world.components_mut::<Shape>().put(player, Shape::Ship);
         world.components_mut::<Collider>().put(player, Collider { size: 0.025 });
-
-        let meteor = world.new_entity();
-
-        world.components_mut::<Meteor>().put(meteor, Meteor);
-        world.components_mut::<Transform>().put(meteor, Transform {
-            position: Vec3::new(0.0, 0.5, 0.0),
-            velocity: Vec3::new(0.1, 0.2, 0.0),
-            repeats: true,
-            size: 1.5,
-            ..Default::default()
-        });
-        world.components_mut::<Shape>().put(meteor, Shape::Meteor);
-        world.components_mut::<Collider>().put(meteor, Collider { size: 0.045 });
     }
+
+    let bounds = if let Some((width, height)) = render.surface().size() {
+        calculate_game_bounds(width, height)
+    } else { Vec2::new(1.0, 1.0) };
 
     let game = GameResource {
         pipeline,
-        ship_sprite: Sprite::new(ship_vertex_buffer, ship_instance_buffer, 4),
-        meteor_sprite: Sprite::new(meteor_vertex_buffer, meteor_instance_buffer, 8),
-        bullet_sprite: Sprite::new(bullet_vertex_buffer, bullet_instance_buffer, 4),
+        ship_sprite,
+        meteor_sprite,
+        bullet_sprite,
         camera_uniform_buffer,
         color_scheme_uniform_buffer,
         camera_bind_group,
         color_scheme_bind_group,
-        start_time: Instant::now(),
+        previous_meteor: Instant::now(),
         previous_frame: Instant::now(),
         input_state: Default::default(),
         world,
-        bounds: Vec2::new(1.0, 1.0),
+        bounds,
     };
     hlist!(game, render, asset_source)
-}
-
-fn data_bytes<T>(data: &[T]) -> &[u8] {
-    unsafe { from_raw_parts(data.as_ptr() as *const u8, size_of_val(data)) }
 }
 
 pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPURenderResource, GameResource, AssetSourceResource<A>)) -> SurfaceEventResult {
@@ -320,14 +272,7 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
             let (surface, device) = render.get_mut();
             surface.configure(device, width, height);
 
-            // update camera
-            let aspect_ratio = width as f32 / height as f32;
-
-            game.bounds = if aspect_ratio > 1.0 {
-                Vec2::new(1.0, height as f32 / width as f32)
-            } else {
-                Vec2::new(aspect_ratio, 1.0)
-            };
+            game.bounds = calculate_game_bounds(width, height);
 
             SurfaceEventResult::Continue
         }
@@ -336,6 +281,47 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
             {
                 let mut remove = Vec::new();
                 let mut create = Vec::new();
+                {
+                    if game.previous_meteor.elapsed().as_secs() >= 10 {
+                        game.previous_meteor = Instant::now();
+
+                        let position: f32 = random();
+                        let position = if position <= 0.25 {
+                            Vec3::new(position * 8.0 - 1.0, 1.0, 0.0)
+                        } else if position <= 0.5 {
+                            Vec3::new(1.0, (position - 0.25) * 8.0 - 1.0, 0.0)
+                        } else if position <= 0.75 {
+                            Vec3::new((position - 0.5) * 8.0 - 1.0, -1.0, 0.0)
+                        } else {
+                            Vec3::new(-1.0, (position - 0.75) * 8.0 - 1.0, 0.0)
+                        }.component_mul(&Vec3::new(game.bounds.x, game.bounds.y, 0.0));
+
+                        let players = game.world.components::<Player>();
+                        let transforms = game.world.components::<Transform>();
+
+                        let velocity = game.world.entity_iter()
+                            .filter(|entity| players.has(*entity))
+                            .filter_map(|entity| transforms.get(entity))
+                            .map(|transform| transform.position - position)
+                            .min_by_key(|target| FloatOrd(target.magnitude()))
+                            .unwrap_or(-position)
+                            .normalize()
+                            .scale(0.2);
+
+                        let size = 1.0 - (random::<f32>() * 0.5 - 0.5);
+                        create.push((
+                            Transform {
+                                position,
+                                size: 1.5 * size,
+                                repeats: true,
+                                velocity,
+                                ..Transform::default()
+                            },
+                            Shape::Meteor,
+                            Collider { size: 0.045 * size },
+                        ));
+                    }
+                }
                 {
                     let elapsed_since_previous_frame = game.previous_frame.elapsed().as_secs_f32();
                     game.previous_frame = Instant::now();

@@ -9,7 +9,7 @@ use crate::source::AssetSource;
 pub mod path;
 pub mod source;
 
-#[async_trait(?Send)]
+#[async_trait(? Send)]
 pub trait AssetPipeline {
     async fn load_asset(&self, path: AssetPath, source: &dyn AssetSource) -> Result<Box<dyn Any>, LoadAssetError>;
 }
@@ -43,10 +43,15 @@ impl AssetPipelines {
         AssetPipelines { pipelines }
     }
 
-    pub async fn load_asset(&self, path: AssetPath, typ: TypeId, source: &impl AssetSource) -> Result<Box<dyn Any>, LoadAssetError> {
+    pub async fn load_asset_of_type(&self, path: AssetPath, typ: TypeId, source: &impl AssetSource) -> Result<Box<dyn Any>, LoadAssetError> {
         let pipeline = self.pipelines.get(&typ)
             .ok_or_else(|| LoadAssetError::UnknownType(typ))?;
         pipeline.load_asset(path, source).await
+    }
+
+    pub async fn load_asset<T: 'static>(&self, path: AssetPath, source: &impl AssetSource) -> Result<T, LoadAssetError> {
+        let boxed = self.load_asset_of_type(path.clone(), TypeId::of::<T>(), source).await?;
+        Ok(*boxed.downcast::<T>().unwrap())
     }
 }
 

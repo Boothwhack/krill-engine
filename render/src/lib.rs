@@ -407,6 +407,10 @@ impl SurfaceContext {
     pub fn format(&self) -> Option<TextureFormat> {
         self.surface_config.as_ref().map(|config| config.format)
     }
+
+    pub fn size(&self) -> Option<(u32, u32)> {
+        self.surface_config.as_ref().map(|config| (config.width, config.height))
+    }
 }
 
 pub struct SurfaceFrame {

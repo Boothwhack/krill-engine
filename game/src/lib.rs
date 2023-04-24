@@ -115,6 +115,7 @@ pub struct GameResource {
     color_scheme_bind_group: BindGroup,
     previous_meteor: Instant,
     time_until_meteor: Duration,
+    meteor_timer: Duration,
     previous_frame: Instant,
     input_state: InputState,
     world: World,
@@ -287,8 +288,9 @@ pub async fn setup_game<A: AssetSource>(resources: HList!(WGPURenderResource, As
         color_scheme_uniform_buffer,
         camera_bind_group,
         color_scheme_bind_group,
-        previous_meteor: Instant::now() - Duration::from_secs(7),
-        time_until_meteor: Duration::from_secs(10),
+        previous_meteor: Instant::now(),
+        time_until_meteor: Duration::from_secs(3),
+        meteor_timer: Duration::from_secs(10),
         previous_frame: Instant::now(),
         input_state: Default::default(),
         world,
@@ -323,7 +325,8 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                 {
                     if game.previous_meteor.elapsed() >= game.time_until_meteor {
                         game.previous_meteor = Instant::now();
-                        game.time_until_meteor = Duration::from_secs_f32(game.time_until_meteor.as_secs_f32() * 0.90);
+                        game.time_until_meteor = game.meteor_timer;
+                        game.meteor_timer = Duration::from_secs_f32(game.meteor_timer.as_secs_f32() * 0.90);
 
                         let position: f32 = random();
                         let position = if position <= 0.25 {

@@ -15,6 +15,7 @@ console_log = "1.0"
 engine = { path = "../engine" }
 game = { path = "../game" }
 log = "0.4"
+getrandom = { features = ["js"] }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 web-sys = { version = "0.3", features = [

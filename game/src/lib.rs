@@ -25,29 +25,74 @@ struct InputState {
     down: bool,
     left: bool,
     right: bool,
+    shoot: bool,
+    has_shot: bool,
 }
 
 type Vec2 = Vector2<f32>;
 type Vec3 = Vector3<f32>;
 type Vec4 = Vector4<f32>;
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 struct Transform {
     position: Vec3,
     rotation: f32,
     velocity: Vec3,
+    repeats: bool,
+    size: f32,
 }
 
+impl Transform {
+    pub fn to_matrix(&self) -> Matrix4<f32> {
+        let translation = Matrix4::new_translation(&self.position);
+        let rotation = Rotation3::from_euler_angles(0.0, 0.0, self.rotation);
+        translation * rotation.to_homogeneous() * Matrix4::new_scaling(0.1 * self.size)
+    }
+}
+
+// Marker component that denotes the player entity
 struct Player;
 
+// Marker component that denotes a bullet in flight
+struct Bullet;
+
+// Marker component that denotes a meteor
+struct Meteor;
+
+#[derive(Copy, Clone)]
 enum Shape {
     Ship,
+    Meteor,
+    Bullet,
+}
+
+struct Sprite {
+    vertex_buffer: Handle<Buffer>,
+    instance_buffer: Handle<Buffer>,
+    vertices: u32,
+}
+
+impl Sprite {
+    fn new(vertex_buffer: Handle<Buffer>, instance_buffer: Handle<Buffer>, vertices: u32) -> Self {
+        Sprite { vertex_buffer, instance_buffer, vertices }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Collider {
+    size: f32,
+}
+
+fn collides(a: &Collider, a_pos: &Vec3, b: &Collider, b_pos: &Vec3) -> bool {
+    let distance = (a_pos - b_pos).magnitude();
+    distance < (a.size + b.size)
 }
 
 pub struct GameResource {
     pipeline: Handle<Pipeline>,
-    vertex_buffer: Handle<Buffer>,
-    instance_buffer: Handle<Buffer>,
+    ship_sprite: Sprite,
+    meteor_sprite: Sprite,
+    bullet_sprite: Sprite,
     camera_uniform_buffer: Handle<Buffer>,
     color_scheme_uniform_buffer: Handle<Buffer>,
     camera_bind_group: BindGroup,
@@ -59,11 +104,29 @@ pub struct GameResource {
     bounds: Vec2,
 }
 
-const VERTICES: [f32; 2 * 4] = [
+const SHIP_VERTICES: [f32; 2 * 4] = [
     -0.3, -0.3,
     0.0, -0.2,
     0.0, 0.3,
     0.3, -0.3,
+];
+
+const METEOR_VERTICES: [f32; 2 * 8] = [
+    0.0, 0.5,
+    0.4, 0.4,
+    -0.4, 0.4,
+    0.5, 0.0,
+    -0.5, 0.0,
+    0.4, -0.4,
+    -0.4, -0.4,
+    0.0, -0.5
+];
+
+const BULLET_VERTICES: [f32; 2 * 4] = [
+    0.04, -0.08,
+    0.04, 0.08,
+    -0.04, -0.08,
+    -0.04, 0.08,
 ];
 
 pub async fn setup_game<A: AssetSource>(resources: HList!(WGPURenderResource, AssetSourceResource<A>)) -> HList!(GameResource, WGPURenderResource, AssetSourceResource<A>) {
@@ -132,13 +195,35 @@ pub async fn setup_game<A: AssetSource>(resources: HList!(WGPURenderResource, As
         surface_format,
         bind_group_layouts,
     );
-    let vertex_buffer = render.device_mut().create_buffer(
-        size_of_val(&VERTICES),
+    let ship_vertex_buffer = render.device_mut().create_buffer(
+        size_of_val(&SHIP_VERTICES),
         BufferUsages::VERTEX | BufferUsages::COPY_DST,
     );
 
-    let data = unsafe { from_raw_parts(VERTICES.as_ptr() as *const u8, size_of_val(&VERTICES)) };
-    render.device().submit_buffer(vertex_buffer, 0, data);
+    {
+        let data = unsafe { from_raw_parts(SHIP_VERTICES.as_ptr() as *const u8, size_of_val(&SHIP_VERTICES)) };
+        render.device().submit_buffer(ship_vertex_buffer, 0, data);
+    }
+
+    let meteor_vertex_buffer = render.device_mut().create_buffer(
+        size_of_val(&METEOR_VERTICES),
+        BufferUsages::VERTEX | BufferUsages::COPY_DST,
+    );
+
+    {
+        let data = unsafe { from_raw_parts(METEOR_VERTICES.as_ptr() as *const u8, size_of_val(&METEOR_VERTICES)) };
+        render.device().submit_buffer(meteor_vertex_buffer, 0, data);
+    }
+
+    let bullet_vertex_buffer = render.device_mut().create_buffer(
+        size_of_val(&METEOR_VERTICES),
+        BufferUsages::VERTEX | BufferUsages::COPY_DST,
+    );
+
+    {
+        let data = unsafe { from_raw_parts(BULLET_VERTICES.as_ptr() as *const u8, size_of_val(&BULLET_VERTICES)) };
+        render.device().submit_buffer(bullet_vertex_buffer, 0, data);
+    }
 
     let camera_uniform_buffer = render.device_mut().create_buffer(
         4 * 4 * size_of::<f32>(),
@@ -161,26 +246,53 @@ pub async fn setup_game<A: AssetSource>(resources: HList!(WGPURenderResource, As
         &[BindGroupBinding::Buffer(color_scheme_uniform_buffer_ref)],
     );
 
-    let instance_buffer = render.device_mut().create_buffer(
+    let ship_instance_buffer = render.device_mut().create_buffer(
+        4 * 4 * size_of::<f32>(),
+        BufferUsages::VERTEX | BufferUsages::COPY_DST,
+    );
+    let meteor_instance_buffer = render.device_mut().create_buffer(
+        4 * 4 * size_of::<f32>(),
+        BufferUsages::VERTEX | BufferUsages::COPY_DST,
+    );
+    let bullet_instance_buffer = render.device_mut().create_buffer(
         4 * 4 * size_of::<f32>(),
         BufferUsages::VERTEX | BufferUsages::COPY_DST,
     );
 
     let mut world = World::default()
         .with_component::<Player>()
+        .with_component::<Meteor>()
+        .with_component::<Bullet>()
         .with_component::<Transform>()
-        .with_component::<Shape>();
+        .with_component::<Shape>()
+        .with_component::<Collider>();
     {
         let player = world.new_entity();
+
         world.components_mut::<Player>().put(player, Player);
-        world.components_mut::<Transform>().put(player, Transform::default());
+        world.components_mut::<Transform>().put(player, Transform { repeats: true, size: 1.0, ..Transform::default() });
         world.components_mut::<Shape>().put(player, Shape::Ship);
+        world.components_mut::<Collider>().put(player, Collider { size: 0.025 });
+
+        let meteor = world.new_entity();
+
+        world.components_mut::<Meteor>().put(meteor, Meteor);
+        world.components_mut::<Transform>().put(meteor, Transform {
+            position: Vec3::new(0.0, 0.5, 0.0),
+            velocity: Vec3::new(0.1, 0.2, 0.0),
+            repeats: true,
+            size: 1.5,
+            ..Default::default()
+        });
+        world.components_mut::<Shape>().put(meteor, Shape::Meteor);
+        world.components_mut::<Collider>().put(meteor, Collider { size: 0.045 });
     }
 
     let game = GameResource {
         pipeline,
-        vertex_buffer,
-        instance_buffer,
+        ship_sprite: Sprite::new(ship_vertex_buffer, ship_instance_buffer, 4),
+        meteor_sprite: Sprite::new(meteor_vertex_buffer, meteor_instance_buffer, 8),
+        bullet_sprite: Sprite::new(bullet_vertex_buffer, bullet_instance_buffer, 4),
         camera_uniform_buffer,
         color_scheme_uniform_buffer,
         camera_bind_group,
@@ -222,56 +334,183 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
         SurfaceEvent::Draw => {
             // Update game state
             {
-                let elapsed_since_previous_frame = game.previous_frame.elapsed().as_secs_f32();
-                game.previous_frame = Instant::now();
-
-                let mut transforms = game.world.components_mut::<Transform>();
-                let players = game.world.components::<Player>();
-
-                let rotation_speed = 2.0;
-                let rotation = (if game.input_state.left { 1.0 } else { 0.0 } +
-                    if game.input_state.right { -1.0 } else { 0.0 }) * rotation_speed * elapsed_since_previous_frame;
-
-                let max_speed = 1.0;
-                let thrust_amount = 0.5;
-                let thrust_vec = Vec3::new(0.0, if game.input_state.up { 1.0 } else { 0.0 } + if game.input_state.down { -1.0 } else { 0.0 }, 0.0);
-
-                for entity in game
-                    .world
-                    .entity_iter()
-                    .filter(|entity| players.has(*entity))
+                let mut remove = Vec::new();
+                let mut create = Vec::new();
                 {
-                    if let Some(transform) = transforms.get(entity) {
-                        let rotation = transform.rotation + rotation;
+                    let elapsed_since_previous_frame = game.previous_frame.elapsed().as_secs_f32();
+                    game.previous_frame = Instant::now();
 
-                        let thrust_angle = Rotation3::from_axis_angle(&Vec3::z_axis(), rotation);
-                        let thrust = thrust_angle * thrust_vec * thrust_amount * elapsed_since_previous_frame;
+                    let mut transforms = game.world.components_mut::<Transform>();
+                    let players = game.world.components::<Player>();
 
-                        let mut velocity = transform.velocity + thrust;
-                        if velocity.magnitude() > max_speed {
-                            velocity = velocity.normalize() * max_speed;
+                    let rotation_speed = 2.0;
+                    let player_rotation = (if game.input_state.left { 1.0 } else { 0.0 } +
+                        if game.input_state.right { -1.0 } else { 0.0 }) * rotation_speed * elapsed_since_previous_frame;
+
+                    let max_speed = 1.0;
+                    let thrust_amount = 0.5;
+                    let thrust_vec = Vec3::new(0.0, if game.input_state.up { 1.0 } else { 0.0 } + if game.input_state.down { -1.0 } else { 0.0 }, 0.0);
+
+                    let bullet_speed = 2.0;
+                    let shoot = if game.input_state.shoot && !game.input_state.has_shot {
+                        game.input_state.has_shot = true;
+                        true
+                    } else { false };
+
+                    for (entity, player) in game
+                        .world
+                        .entity_iter()
+                        .map(|entity| (entity, players.get(entity)))
+                    {
+                        if let Some(transform) = transforms.get(entity) {
+                            let mut velocity = transform.velocity;
+                            let mut rotation = transform.rotation;
+                            if player.is_some() {
+                                rotation += player_rotation;
+
+                                let thrust_angle = Rotation3::from_axis_angle(&Vec3::z_axis(), rotation);
+                                let thrust = thrust_angle * thrust_vec * thrust_amount * elapsed_since_previous_frame;
+
+                                velocity += thrust;
+                                if velocity.magnitude() > max_speed {
+                                    velocity = velocity.normalize() * max_speed;
+                                }
+                            }
+
+                            let position = transform.position + velocity * elapsed_since_previous_frame;
+                            let x = if position.x > game.bounds.x {
+                                if !transform.repeats {
+                                    remove.push(entity);
+                                    continue;
+                                }
+                                -game.bounds.x
+                            } else if position.x < -game.bounds.x {
+                                if !transform.repeats {
+                                    remove.push(entity);
+                                    continue;
+                                }
+                                game.bounds.x
+                            } else {
+                                position.x
+                            };
+                            let y = if position.y > game.bounds.y {
+                                if !transform.repeats {
+                                    remove.push(entity);
+                                    continue;
+                                }
+                                -game.bounds.y
+                            } else if position.y < -game.bounds.y {
+                                if !transform.repeats {
+                                    remove.push(entity);
+                                    continue;
+                                }
+                                game.bounds.y
+                            } else {
+                                position.y
+                            };
+                            let position = Vec3::new(x, y, 0.0);
+
+                            if player.is_some() && shoot {
+                                let angle = Rotation3::from_axis_angle(&Vec3::z_axis(), rotation);
+                                let angle = angle * Vec3::y_axis();
+                                create.push((
+                                    Transform {
+                                        position: position + angle.scale(0.02),
+                                        velocity: angle.scale(bullet_speed),
+                                        rotation,
+                                        repeats: false,
+                                        size: 1.0,
+                                        ..Default::default()
+                                    },
+                                    Shape::Bullet,
+                                    Collider { size: 0.01 },
+                                ));
+                            }
+
+                            let transform = Transform { position, rotation, velocity, repeats: transform.repeats, size: transform.size };
+                            transforms.put(entity, transform);
                         }
-
-                        let position = transform.position + velocity * elapsed_since_previous_frame;
-                        let x = if position.x > game.bounds.x {
-                            -game.bounds.x
-                        } else if position.x < -game.bounds.x {
-                            game.bounds.x
-                        } else {
-                            position.x
-                        };
-                        let y = if position.y > game.bounds.y {
-                            -game.bounds.y
-                        } else if position.y < -game.bounds.y {
-                            game.bounds.y
-                        } else {
-                            position.y
-                        };
-                        let position = Vec3::new(x, y, 0.0);
-
-                        let transform = Transform { position, rotation, velocity };
-                        transforms.put(entity, transform);
                     }
+                }
+
+                {
+                    let players = game.world.components::<Player>();
+                    let meteors = game.world.components::<Meteor>();
+                    let bullets = game.world.components::<Bullet>();
+                    let colliders = game.world.components::<Collider>();
+                    let transforms = game.world.components::<Transform>();
+
+                    // check if a player is colliding with a meteor
+                    for (player, player_collider, player_transform) in game.world.entity_iter()
+                        .filter_map(|entity| colliders.get(entity).map(|collider| (entity, collider)))
+                        .filter(|(entity, _)| players.has(*entity))
+                        .filter_map(|(entity, collider)| transforms.get(entity).map(|transform| (entity, collider, transform))) {
+                        for (meteor_collider, meteor_transform) in game.world.entity_iter()
+                            .filter_map(|entity| colliders.get(entity).map(|collider| (entity, collider)))
+                            .filter(|(entity, _)| meteors.has(*entity))
+                            .filter_map(|(entity, collider)| transforms.get(entity).map(|transform| (collider, transform))) {
+                            if collides(player_collider, &player_transform.position, meteor_collider, &meteor_transform.position) {
+                                remove.push(player);
+                            }
+                        }
+                    }
+
+                    let split_size = 0.7;
+                    let split_angle = 0.4;
+                    let split_velocity = 1.25;
+                    let split_min_size = 0.4;
+
+                    // check if a bullet is colliding with a meteor
+                    for (bullet, bullet_collider, bullet_transform) in game.world.entity_iter()
+                        .filter_map(|entity| colliders.get(entity).map(|collider| (entity, collider)))
+                        .filter(|(entity, _)| bullets.has(*entity))
+                        .filter_map(|(entity, collider)| transforms.get(entity).map(|transform| (entity, collider, transform))) {
+                        for (meteor, meteor_collider, meteor_transform) in game.world.entity_iter()
+                            .filter_map(|entity| colliders.get(entity).map(|collider| (entity, collider)))
+                            .filter(|(entity, _)| meteors.has(*entity))
+                            .filter_map(|(entity, collider)| transforms.get(entity).map(|transform| (entity, collider, transform))) {
+                            if collides(bullet_collider, &bullet_transform.position, meteor_collider, &meteor_transform.position) {
+                                remove.push(bullet);
+                                remove.push(meteor);
+
+                                if meteor_transform.size > split_min_size {
+                                    create.push((
+                                        Transform {
+                                            velocity: Rotation3::from_axis_angle(&Vec3::z_axis(), split_angle) * meteor_transform.velocity * split_velocity,
+                                            size: meteor_transform.size * split_size,
+                                            ..meteor_transform.clone()
+                                        },
+                                        Shape::Meteor,
+                                        Collider { size: meteor_collider.size * split_size },
+                                    ));
+                                    create.push((
+                                        Transform {
+                                            velocity: Rotation3::from_axis_angle(&Vec3::z_axis(), -split_angle) * meteor_transform.velocity * split_velocity,
+                                            size: meteor_transform.size * split_size,
+                                            ..meteor_transform.clone()
+                                        },
+                                        Shape::Meteor,
+                                        Collider { size: meteor_collider.size * split_size },
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
+
+                for (transform, shape, collider) in create {
+                    let entity = game.world.new_entity();
+                    game.world.components_mut::<Transform>().put(entity, transform);
+                    game.world.components_mut::<Collider>().put(entity, collider);
+                    game.world.components_mut::<Shape>().put(entity, shape);
+                    match shape {
+                        Shape::Ship => game.world.components_mut::<Player>().put(entity, Player),
+                        Shape::Meteor => game.world.components_mut::<Meteor>().put(entity, Meteor),
+                        Shape::Bullet => game.world.components_mut::<Bullet>().put(entity, Bullet),
+                    }
+                }
+                for entity in remove {
+                    game.world.drop_entity(entity)
                 }
             }
 
@@ -286,6 +525,8 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                 let shapes = game.world.components::<Shape>();
 
                 let mut player_transforms = Vec::new();
+                let mut meteor_transforms = Vec::new();
+                let mut bullet_transforms = Vec::new();
 
                 for (_, shape, transform) in game
                     .world
@@ -297,39 +538,46 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                             .map(|transform| (entity, shape, transform))
                     })
                 {
-                    if let Shape::Ship = shape {
-                        player_transforms.push(transform);
-                        break;
+                    match shape {
+                        Shape::Ship => player_transforms.push(transform),
+                        Shape::Meteor => meteor_transforms.push(transform),
+                        Shape::Bullet => bullet_transforms.push(transform),
                     }
                 }
 
-                let instances = player_transforms.into_iter()
-                    .map(|Transform { position, rotation, .. }| {
-                        let translation = Matrix4::new_translation(position);
-                        let rotation = Rotation3::from_euler_angles(0.0, 0.0, *rotation);
-                        translation * rotation.to_homogeneous() * Matrix4::new_scaling(0.1)
-                    })
-                    .collect::<Vec<_>>();
+                let mut clear = true;
+                let render_passes = [
+                    (&game.ship_sprite, player_transforms),
+                    (&game.meteor_sprite, meteor_transforms),
+                    (&game.bullet_sprite, bullet_transforms),
+                ].into_iter().map(|(sprite, transforms)| {
+                    let instances = transforms.into_iter().map(Transform::to_matrix).collect::<Vec<_>>();
+                    let instances_data = data_bytes(&instances);
+                    render.device_mut().resize_buffer(sprite.instance_buffer, instances_data.len());
+                    render.device().submit_buffer(sprite.instance_buffer, 0, instances_data);
 
-                let instances_data = data_bytes(&instances);
-                render.device_mut().resize_buffer(game.instance_buffer, instances_data.len());
-                render
-                    .device()
-                    .submit_buffer(game.instance_buffer, 0, instances_data);
+                    RenderPass {
+                        pipeline: game.pipeline,
+                        vertices: 0..sprite.vertices,
+                        targets: vec![Target::ScreenTarget {
+                            clear: if clear {
+                                clear = false;
+                                Some(Color::rgb(0, 3, 22, 1.0))
+                            } else { None },
+                        }],
+                        vertex_buffers: vec![Some(sprite.vertex_buffer), Some(sprite.instance_buffer)],
+                        bind_groups: vec![game.camera_bind_group.clone(), game.color_scheme_bind_group.clone()],
+                        instances: 0..instances.len() as _,
+                    }
+                }).collect::<Vec<_>>();
 
                 let frame = render.surface().get_frame();
                 let mut encoder = render.device().command_encoder(&frame);
 
-                encoder.render_pass(RenderPass {
-                    pipeline: game.pipeline,
-                    vertices: 0..4,
-                    targets: vec![Target::ScreenTarget {
-                        clear: Some(Color::rgb(0, 3, 22, 1.0)),
-                    }],
-                    vertex_buffers: vec![Some(game.vertex_buffer), Some(game.instance_buffer)],
-                    bind_groups: vec![game.camera_bind_group.clone(), game.color_scheme_bind_group.clone()],
-                    instances: 0..instances.len() as _,
-                });
+                for render_pass in render_passes {
+                    encoder.render_pass(render_pass);
+                }
+
                 render.device().submit_commands(encoder);
 
                 render.surface().present(frame);
@@ -345,6 +593,12 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                 Some(VirtualKeyCode::Down) => game.input_state.down = state,
                 Some(VirtualKeyCode::Left) => game.input_state.left = state,
                 Some(VirtualKeyCode::Right) => game.input_state.right = state,
+                Some(VirtualKeyCode::Space) => {
+                    game.input_state.shoot = state;
+                    if !state {
+                        game.input_state.has_shot = false;
+                    }
+                }
                 _ => (),
             }
             SurfaceEventResult::Continue

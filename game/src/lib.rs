@@ -15,7 +15,6 @@ use std::ops::Deref;
 use std::slice::from_raw_parts;
 use std::time::Duration;
 use float_ord::FloatOrd;
-use futures::StreamExt;
 use rand::{random, Rng, SeedableRng};
 use rand::distributions::Standard;
 use rand::rngs::StdRng;
@@ -104,6 +103,41 @@ fn collides(a: &Collider, a_pos: &Vec3, b: &Collider, b_pos: &Vec3) -> bool {
     distance < (a.size + b.size)
 }
 
+pub struct GameState {
+    world: World,
+    previous_meteor: Instant,
+    time_until_meteor: Duration,
+    meteor_timer: Duration,
+}
+
+impl Default for GameState {
+    fn default() -> Self {
+        let mut world = World::default()
+            .with_component::<Player>()
+            .with_component::<Meteor>()
+            .with_component::<Bullet>()
+            .with_component::<Transform>()
+            .with_component::<Shape>()
+            .with_component::<Collider>();
+
+        {
+            let player = world.new_entity();
+
+            world.components_mut::<Player>().put(player, Player);
+            world.components_mut::<Transform>().put(player, Transform { size: 1.0, ..Transform::default() });
+            world.components_mut::<Shape>().put(player, Shape::Ship);
+            world.components_mut::<Collider>().put(player, Collider { size: 0.025 });
+        }
+
+        GameState {
+            world,
+            previous_meteor: Instant::now(),
+            time_until_meteor: Duration::from_secs(3),
+            meteor_timer: Duration::from_secs(10),
+        }
+    }
+}
+
 pub struct GameResource {
     pipeline: Handle<Pipeline>,
     ship_sprite: Sprite,
@@ -113,13 +147,11 @@ pub struct GameResource {
     color_scheme_uniform_buffer: Handle<Buffer>,
     camera_bind_group: BindGroup,
     color_scheme_bind_group: BindGroup,
-    previous_meteor: Instant,
-    time_until_meteor: Duration,
-    meteor_timer: Duration,
     previous_frame: Instant,
     input_state: InputState,
-    world: World,
+    state: GameState,
     bounds: Vec2,
+    restart_timer: Option<(Instant, Duration)>,
 }
 
 const SHIP_VERTICES: [Vec2; 4] = [
@@ -259,22 +291,6 @@ pub async fn setup_game<A: AssetSource>(resources: HList!(WGPURenderResource, As
         &[BindGroupBinding::Buffer(color_scheme_uniform_buffer_ref)],
     );
 
-    let mut world = World::default()
-        .with_component::<Player>()
-        .with_component::<Meteor>()
-        .with_component::<Bullet>()
-        .with_component::<Transform>()
-        .with_component::<Shape>()
-        .with_component::<Collider>();
-    {
-        let player = world.new_entity();
-
-        world.components_mut::<Player>().put(player, Player);
-        world.components_mut::<Transform>().put(player, Transform { size: 1.0, ..Transform::default() });
-        world.components_mut::<Shape>().put(player, Shape::Ship);
-        world.components_mut::<Collider>().put(player, Collider { size: 0.025 });
-    }
-
     let bounds = if let Some((width, height)) = render.surface().size() {
         calculate_game_bounds(width, height)
     } else { Vec2::new(1.0, 1.0) };
@@ -288,13 +304,11 @@ pub async fn setup_game<A: AssetSource>(resources: HList!(WGPURenderResource, As
         color_scheme_uniform_buffer,
         camera_bind_group,
         color_scheme_bind_group,
-        previous_meteor: Instant::now(),
-        time_until_meteor: Duration::from_secs(3),
-        meteor_timer: Duration::from_secs(10),
         previous_frame: Instant::now(),
-        input_state: Default::default(),
-        world,
+        input_state: InputState::default(),
+        state: GameState::default(),
         bounds,
+        restart_timer: None,
     };
     hlist!(game, render, asset_source)
 }
@@ -316,6 +330,13 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
         SurfaceEvent::Draw => {
             // Update game state
             {
+                if let Some((time, duration)) = game.restart_timer.as_ref() {
+                    if time.elapsed() > *duration {
+                        game.state = GameState::default();
+                        game.restart_timer = None;
+                    }
+                }
+
                 // list of which entities will be deleted at the end of the game tick
                 let mut remove = Vec::new();
                 // components for new entities that will be spawned at the ent of the tick
@@ -323,10 +344,10 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
 
                 //
                 {
-                    if game.previous_meteor.elapsed() >= game.time_until_meteor {
-                        game.previous_meteor = Instant::now();
-                        game.time_until_meteor = game.meteor_timer;
-                        game.meteor_timer = Duration::from_secs_f32(game.meteor_timer.as_secs_f32() * 0.90);
+                    if game.state.previous_meteor.elapsed() >= game.state.time_until_meteor {
+                        game.state.previous_meteor = Instant::now();
+                        game.state.time_until_meteor = game.state.meteor_timer;
+                        game.state.meteor_timer = Duration::from_secs_f32(game.state.meteor_timer.as_secs_f32() * 0.90);
 
                         let position: f32 = random();
                         let position = if position <= 0.25 {
@@ -339,10 +360,10 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                             Vec3::new(-1.0, (position - 0.75) * 8.0 - 1.0, 0.0)
                         }.component_mul(&Vec3::new(game.bounds.x, game.bounds.y, 0.0));
 
-                        let players = game.world.components::<Player>();
-                        let transforms = game.world.components::<Transform>();
+                        let players = game.state.world.components::<Player>();
+                        let transforms = game.state.world.components::<Transform>();
 
-                        let velocity = game.world.entity_iter()
+                        let velocity = game.state.world.entity_iter()
                             .filter(|entity| players.has(*entity))
                             .filter_map(|entity| transforms.get(entity))
                             .map(|transform| transform.position - position)
@@ -372,8 +393,13 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                     let elapsed_since_previous_frame = game.previous_frame.elapsed().as_secs_f32();
                     game.previous_frame = Instant::now();
 
-                    let mut transforms = game.world.components_mut::<Transform>();
-                    let players = game.world.components::<Player>();
+                    let shoot = if game.input_state.shoot && !game.input_state.has_shot {
+                        game.input_state.has_shot = true;
+                        true
+                    } else { false };
+
+                    let mut transforms = game.state.world.components_mut::<Transform>();
+                    let players = game.state.world.components::<Player>();
 
                     let rotation_speed = 2.1;
                     let player_rotation = (if game.input_state.left { 1.0 } else { 0.0 } +
@@ -384,12 +410,9 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                     let thrust_vec = Vec3::new(0.0, if game.input_state.up { 1.0 } else { 0.0 } + if game.input_state.down { -1.0 } else { 0.0 }, 0.0);
 
                     let bullet_speed = 2.0;
-                    let shoot = if game.input_state.shoot && !game.input_state.has_shot {
-                        game.input_state.has_shot = true;
-                        true
-                    } else { false };
 
-                    for (entity, player) in game
+                    let mut player_count = 0;
+                    for (entity, player) in game.state
                         .world
                         .entity_iter()
                         .map(|entity| (entity, players.get(entity)))
@@ -398,6 +421,7 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                             let mut velocity = transform.velocity;
                             let mut rotation = transform.rotation;
                             if player.is_some() {
+                                player_count += 1;
                                 rotation += player_rotation;
 
                                 let thrust_angle = Rotation3::from_axis_angle(&Vec3::z_axis(), rotation);
@@ -465,21 +489,24 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                             transforms.put(entity, transform);
                         }
                     }
+                    if player_count == 0 && game.restart_timer.is_none() {
+                        game.restart_timer = Some((Instant::now(), Duration::from_secs(3)));
+                    }
                 }
 
                 {
-                    let players = game.world.components::<Player>();
-                    let meteors = game.world.components::<Meteor>();
-                    let bullets = game.world.components::<Bullet>();
-                    let colliders = game.world.components::<Collider>();
-                    let transforms = game.world.components::<Transform>();
+                    let players = game.state.world.components::<Player>();
+                    let meteors = game.state.world.components::<Meteor>();
+                    let bullets = game.state.world.components::<Bullet>();
+                    let colliders = game.state.world.components::<Collider>();
+                    let transforms = game.state.world.components::<Transform>();
 
                     // check if a player is colliding with a meteor
-                    for (player, player_collider, player_transform) in game.world.entity_iter()
+                    for (player, player_collider, player_transform) in game.state.world.entity_iter()
                         .filter_map(|entity| colliders.get(entity).map(|collider| (entity, collider)))
                         .filter(|(entity, _)| players.has(*entity))
                         .filter_map(|(entity, collider)| transforms.get(entity).map(|transform| (entity, collider, transform))) {
-                        for (meteor_collider, meteor_transform) in game.world.entity_iter()
+                        for (meteor_collider, meteor_transform) in game.state.world.entity_iter()
                             .filter_map(|entity| colliders.get(entity).map(|collider| (entity, collider)))
                             .filter(|(entity, _)| meteors.has(*entity))
                             .filter_map(|(entity, collider)| transforms.get(entity).map(|transform| (collider, transform))) {
@@ -495,11 +522,11 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                     let split_min_size = 0.5;
 
                     // check if a bullet is colliding with a meteor
-                    for (bullet, bullet_collider, bullet_transform) in game.world.entity_iter()
+                    for (bullet, bullet_collider, bullet_transform) in game.state.world.entity_iter()
                         .filter_map(|entity| colliders.get(entity).map(|collider| (entity, collider)))
                         .filter(|(entity, _)| bullets.has(*entity))
                         .filter_map(|(entity, collider)| transforms.get(entity).map(|transform| (entity, collider, transform))) {
-                        for (meteor, meteor_collider, meteor_transform) in game.world.entity_iter()
+                        for (meteor, meteor_collider, meteor_transform) in game.state.world.entity_iter()
                             .filter_map(|entity| colliders.get(entity).map(|collider| (entity, collider)))
                             .filter(|(entity, _)| meteors.has(*entity))
                             .filter_map(|(entity, collider)| transforms.get(entity).map(|transform| (entity, collider, transform))) {
@@ -548,18 +575,18 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                 }
 
                 for (transform, shape, collider) in create {
-                    let entity = game.world.new_entity();
-                    game.world.components_mut::<Transform>().put(entity, transform);
-                    game.world.components_mut::<Collider>().put(entity, collider);
-                    game.world.components_mut::<Shape>().put(entity, shape);
+                    let entity = game.state.world.new_entity();
+                    game.state.world.components_mut::<Transform>().put(entity, transform);
+                    game.state.world.components_mut::<Collider>().put(entity, collider);
+                    game.state.world.components_mut::<Shape>().put(entity, shape);
                     match shape {
-                        Shape::Ship => game.world.components_mut::<Player>().put(entity, Player),
-                        Shape::Meteor => game.world.components_mut::<Meteor>().put(entity, Meteor),
-                        Shape::Bullet => game.world.components_mut::<Bullet>().put(entity, Bullet),
+                        Shape::Ship => game.state.world.components_mut::<Player>().put(entity, Player),
+                        Shape::Meteor => game.state.world.components_mut::<Meteor>().put(entity, Meteor),
+                        Shape::Bullet => game.state.world.components_mut::<Bullet>().put(entity, Bullet),
                     }
                 }
                 for entity in remove {
-                    game.world.drop_entity(entity)
+                    game.state.world.drop_entity(entity)
                 }
             }
 
@@ -570,14 +597,14 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
 
                 render.device().submit_buffer(game.camera_uniform_buffer, 0, data_bytes(&[view_matrix]));
 
-                let transforms = game.world.components::<Transform>();
-                let shapes = game.world.components::<Shape>();
+                let transforms = game.state.world.components::<Transform>();
+                let shapes = game.state.world.components::<Shape>();
 
                 let mut player_transforms = Vec::new();
                 let mut meteor_transforms = Vec::new();
                 let mut bullet_transforms = Vec::new();
 
-                for (_, shape, transform) in game
+                for (_, shape, transform) in game.state
                     .world
                     .entity_iter()
                     .filter_map(|entity| shapes.get(entity).map(|shape| (entity, shape)))

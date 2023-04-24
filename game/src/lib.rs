@@ -224,14 +224,6 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                 let elapsed_since_previous_frame = game.previous_frame.elapsed().as_secs_f32();
                 game.previous_frame = Instant::now();
 
-                /*let move_direction = Vector3::new(
-                    if game.input_state.left { -1.0 } else { 0.0 }
-                        + if game.input_state.right { 1.0 } else { 0.0 },
-                    if game.input_state.down { -1.0 } else { 0.0 }
-                        + if game.input_state.up { 1.0 } else { 0.0 },
-                    0.0,
-                ) * 0.5 * elapsed_since_previous_frame;*/
-
                 let mut transforms = game.world.components_mut::<Transform>();
                 let players = game.world.components::<Player>();
 

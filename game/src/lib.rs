@@ -13,8 +13,12 @@ use std::collections::HashMap;
 use std::mem::{size_of, size_of_val};
 use std::ops::Deref;
 use std::slice::from_raw_parts;
+use std::time::Duration;
 use float_ord::FloatOrd;
-use rand::random;
+use futures::StreamExt;
+use rand::{random, Rng, SeedableRng};
+use rand::distributions::Standard;
+use rand::rngs::StdRng;
 use winit::event::{DeviceEvent, ElementState, VirtualKeyCode};
 use engine::surface::{SurfaceEvent, SurfaceEventResult};
 use engine::utils::{HList, hlist};
@@ -40,7 +44,7 @@ struct Transform {
     position: Vec3,
     rotation: f32,
     velocity: Vec3,
-    repeats: bool,
+    transient: bool,
     size: f32,
 }
 
@@ -109,6 +113,7 @@ pub struct GameResource {
     camera_bind_group: BindGroup,
     color_scheme_bind_group: BindGroup,
     previous_meteor: Instant,
+    time_until_meteor: Duration,
     previous_frame: Instant,
     input_state: InputState,
     world: World,
@@ -198,8 +203,37 @@ pub async fn setup_game<A: AssetSource>(resources: HList!(WGPURenderResource, As
         bind_group_layouts,
     );
 
+    // generate meteor shapes
+    let meteor_vertices = {
+        let radius = 0.5;
+        let mut vertices: [Vec2; 10] = Default::default();
+
+        let mut indices = vec![0];
+        for i in 1..=vertices.len() / 2 {
+            indices.push(i);
+            indices.push(vertices.len() - i);
+        }
+
+        let mut rng = StdRng::seed_from_u64(0).sample_iter::<f32, _>(Standard);
+
+        let vertex_count = vertices.len();
+        for (i, vertex) in vertices.iter_mut().enumerate() {
+            let progress = (indices[i] as f32 / vertex_count as f32) * f32::pi() * 2.0;
+
+            let random_x = rng.next().unwrap() * 0.09;
+            let random_y = rng.next().unwrap() * 0.08;
+
+            *vertex = Vec2::new(
+                progress.sin() * radius + random_x,
+                progress.cos() * radius + random_y,
+            );
+        }
+
+        vertices
+    };
+
     let ship_sprite = Sprite::new(render.device_mut(), &SHIP_VERTICES);
-    let meteor_sprite = Sprite::new(render.device_mut(), &METEOR_VERTICES);
+    let meteor_sprite = Sprite::new(render.device_mut(), &meteor_vertices);
     let bullet_sprite = Sprite::new(render.device_mut(), &BULLET_VERTICES);
 
     let camera_uniform_buffer = render.device_mut().create_buffer(
@@ -234,7 +268,7 @@ pub async fn setup_game<A: AssetSource>(resources: HList!(WGPURenderResource, As
         let player = world.new_entity();
 
         world.components_mut::<Player>().put(player, Player);
-        world.components_mut::<Transform>().put(player, Transform { repeats: true, size: 1.0, ..Transform::default() });
+        world.components_mut::<Transform>().put(player, Transform { size: 1.0, ..Transform::default() });
         world.components_mut::<Shape>().put(player, Shape::Ship);
         world.components_mut::<Collider>().put(player, Collider { size: 0.025 });
     }
@@ -252,7 +286,8 @@ pub async fn setup_game<A: AssetSource>(resources: HList!(WGPURenderResource, As
         color_scheme_uniform_buffer,
         camera_bind_group,
         color_scheme_bind_group,
-        previous_meteor: Instant::now(),
+        previous_meteor: Instant::now() - Duration::from_secs(7),
+        time_until_meteor: Duration::from_secs(10),
         previous_frame: Instant::now(),
         input_state: Default::default(),
         world,
@@ -285,8 +320,9 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
 
                 //
                 {
-                    if game.previous_meteor.elapsed().as_secs() >= 10 {
+                    if game.previous_meteor.elapsed() >= game.time_until_meteor {
                         game.previous_meteor = Instant::now();
+                        game.time_until_meteor = Duration::from_secs_f32(game.time_until_meteor.as_secs_f32() * 0.90);
 
                         let position: f32 = random();
                         let position = if position <= 0.25 {
@@ -318,7 +354,6 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                                 position,
                                 rotation,
                                 size: 1.5 * size,
-                                repeats: true,
                                 velocity,
                                 ..Transform::default()
                             },
@@ -370,13 +405,13 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
 
                             let position = transform.position + velocity * elapsed_since_previous_frame;
                             let x = if position.x > game.bounds.x {
-                                if !transform.repeats {
+                                if transform.transient {
                                     remove.push(entity);
                                     continue;
                                 }
                                 -game.bounds.x
                             } else if position.x < -game.bounds.x {
-                                if !transform.repeats {
+                                if transform.transient {
                                     remove.push(entity);
                                     continue;
                                 }
@@ -385,13 +420,13 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                                 position.x
                             };
                             let y = if position.y > game.bounds.y {
-                                if !transform.repeats {
+                                if transform.transient {
                                     remove.push(entity);
                                     continue;
                                 }
                                 -game.bounds.y
                             } else if position.y < -game.bounds.y {
-                                if !transform.repeats {
+                                if transform.transient {
                                     remove.push(entity);
                                     continue;
                                 }
@@ -409,7 +444,7 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                                         position: position + angle.scale(0.02),
                                         velocity: angle.scale(bullet_speed),
                                         rotation,
-                                        repeats: false,
+                                        transient: true,
                                         size: 1.0,
                                         ..Default::default()
                                     },
@@ -418,7 +453,7 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                                 ));
                             }
 
-                            let transform = Transform { position, rotation, velocity, repeats: transform.repeats, size: transform.size };
+                            let transform = Transform { position, rotation, velocity, ..transform.clone() };
                             transforms.put(entity, transform);
                         }
                     }
@@ -465,30 +500,34 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                                 remove.push(meteor);
 
                                 if meteor_transform.size > split_min_size {
-                                    // ±0.25
+                                    let size_distribution = (random::<f32>() * 2.0 - 1.0) * 0.2;
+
                                     let rotation = random::<f32>() * f32::pi() * 2.0;
+                                    // ±0.25
                                     let angle_random = random::<f32>() * 0.5 - 0.25;
+                                    let size_random = 1.0 + size_distribution;
                                     create.push((
                                         Transform {
                                             rotation,
                                             velocity: Rotation3::from_axis_angle(&Vec3::z_axis(), split_angle + angle_random) * meteor_transform.velocity * split_velocity,
-                                            size: meteor_transform.size * split_size,
+                                            size: meteor_transform.size * split_size * size_random,
                                             ..meteor_transform.clone()
                                         },
                                         Shape::Meteor,
-                                        Collider { size: meteor_collider.size * split_size },
+                                        Collider { size: meteor_collider.size * split_size * size_random },
                                     ));
                                     let rotation = random::<f32>() * f32::pi() * 2.0;
                                     let angle_random = random::<f32>() * 0.5 - 0.25;
+                                    let size = 1.0 - size_distribution;
                                     create.push((
                                         Transform {
                                             rotation,
                                             velocity: Rotation3::from_axis_angle(&Vec3::z_axis(), -split_angle + angle_random) * meteor_transform.velocity * split_velocity,
-                                            size: meteor_transform.size * split_size,
+                                            size: meteor_transform.size * split_size * size,
                                             ..meteor_transform.clone()
                                         },
                                         Shape::Meteor,
-                                        Collider { size: meteor_collider.size * split_size },
+                                        Collider { size: meteor_collider.size * split_size * size },
                                     ));
                                 }
                             }

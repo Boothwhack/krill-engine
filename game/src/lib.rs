@@ -7,7 +7,7 @@ use engine::render::bindgroup::serial::{BindGroupAssetPipeline, BindGroupLayoutA
 use engine::render::pipeline::serial::{RenderPipelineAsset, RenderPipelineAssetPipeline};
 use engine::render::{BindGroup, BindGroupBinding, Buffer, BufferUsages, Color, Handle, Pipeline, RenderPass, Target};
 use instant::Instant;
-use nalgebra::{Matrix4, Rotation3, Vector2, Vector3, Vector4};
+use nalgebra::{Matrix4, Rotation3, Unit, Vector2, Vector3, Vector4};
 use std::any::TypeId;
 use std::collections::HashMap;
 use std::mem::{size_of, size_of_val};
@@ -35,6 +35,7 @@ type Vec4 = Vector4<f32>;
 struct Transform {
     position: Vec3,
     rotation: f32,
+    velocity: Vec3,
 }
 
 struct Player;
@@ -227,9 +228,13 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                 let mut transforms = game.world.components_mut::<Transform>();
                 let players = game.world.components::<Player>();
 
-                let rotation_speed = 1.0;
+                let rotation_speed = 2.0;
                 let rotation = (if game.input_state.left { 1.0 } else { 0.0 } +
                     if game.input_state.right { -1.0 } else { 0.0 }) * rotation_speed * elapsed_since_previous_frame;
+
+                let max_speed = 1.0;
+                let thrust_amount = 0.5;
+                let thrust_vec = Vec3::new(0.0, if game.input_state.up { 1.0 } else { 0.0 } + if game.input_state.down { -1.0 } else { 0.0 }, 0.0);
 
                 for entity in game
                     .world
@@ -237,9 +242,18 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                     .filter(|entity| players.has(*entity))
                 {
                     if let Some(transform) = transforms.get(entity) {
+                        let thrust_angle = Rotation3::from_axis_angle(&Vec3::z_axis(), transform.rotation);
+                        let thrust = thrust_angle * thrust_vec * thrust_amount * elapsed_since_previous_frame;
+
+                        let mut velocity = transform.velocity + thrust;
+                        if velocity.magnitude() > max_speed {
+                            velocity = velocity.normalize() * max_speed;
+                        }
+
                         let transform = Transform {
-                            position: transform.position,
+                            position: transform.position + velocity * elapsed_since_previous_frame,
                             rotation: transform.rotation + rotation,
+                            velocity,
                         };
                         transforms.put(entity, transform);
                     }
@@ -275,10 +289,10 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                 }
 
                 let instances = player_transforms.into_iter()
-                    .map(|Transform { position, rotation }| {
+                    .map(|Transform { position, rotation, .. }| {
                         let translation = Matrix4::new_translation(position);
                         let rotation = Rotation3::from_euler_angles(0.0, 0.0, *rotation);
-                        rotation.to_homogeneous() * translation
+                        translation * rotation.to_homogeneous() * Matrix4::new_scaling(0.1)
                     })
                     .collect::<Vec<_>>();
 

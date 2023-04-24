@@ -7,7 +7,7 @@ use engine::render::bindgroup::serial::{BindGroupAssetPipeline, BindGroupLayoutA
 use engine::render::pipeline::serial::{RenderPipelineAsset, RenderPipelineAssetPipeline};
 use engine::render::{BindGroup, BindGroupBinding, Buffer, BufferUsages, Color, Handle, Pipeline, RenderPass, Target};
 use instant::Instant;
-use nalgebra::{Matrix4, Vector2, Vector3, Vector4};
+use nalgebra::{Matrix4, Rotation3, Vector2, Vector3, Vector4};
 use std::any::TypeId;
 use std::collections::HashMap;
 use std::mem::{size_of, size_of_val};
@@ -34,28 +34,34 @@ type Vec4 = Vector4<f32>;
 #[derive(Debug, Default)]
 struct Transform {
     position: Vec3,
+    rotation: f32,
 }
 
 struct Player;
 
 enum Shape {
-    Triangle,
+    Ship,
 }
 
 pub struct GameResource {
     pipeline: Handle<Pipeline>,
     vertex_buffer: Handle<Buffer>,
     instance_buffer: Handle<Buffer>,
-    uniform_buffer: Handle<Buffer>,
+    camera_uniform_buffer: Handle<Buffer>,
+    color_scheme_uniform_buffer: Handle<Buffer>,
     camera_bind_group: BindGroup,
+    color_scheme_bind_group: BindGroup,
     start_time: Instant,
     previous_frame: Instant,
     input_state: InputState,
     world: World,
 }
 
-const VERTICES: [f32; 6 * 3] = [
-    -0.3, -0.3, 1.0, 0.0, 0.0, 1.0, 0.0, 0.3, 0.0, 1.0, 0.0, 1.0, 0.3, -0.3, 0.0, 0.0, 1.0, 1.0,
+const VERTICES: [f32; 2 * 4] = [
+    -0.3, -0.3,
+    0.0, -0.2,
+    0.0, 0.3,
+    0.3, -0.3,
 ];
 
 pub async fn setup_game<A: AssetSource>(resources: HList!(WGPURenderResource, AssetSourceResource<A>)) -> HList!(GameResource, WGPURenderResource, AssetSourceResource<A>) {
@@ -77,7 +83,7 @@ pub async fn setup_game<A: AssetSource>(resources: HList!(WGPURenderResource, As
 
     let pipeline_asset = asset_pipelines
         .load_asset(
-            AssetPath::new("/triangle.pipeline").unwrap(),
+            AssetPath::new("/game.pipeline").unwrap(),
             TypeId::of::<RenderPipelineAsset>(),
             asset_source.deref(),
         )
@@ -96,6 +102,16 @@ pub async fn setup_game<A: AssetSource>(resources: HList!(WGPURenderResource, As
         .expect("camera bind group layout")
         .downcast::<BindGroupLayoutAsset>()
         .expect("bind group layout asset");
+    let color_scheme_bind_group_asset = asset_pipelines
+        .load_asset(
+            AssetPath::new("/color-scheme.bindgroup").unwrap(),
+            TypeId::of::<BindGroupLayoutAsset>(),
+            asset_source.deref(),
+        )
+        .await
+        .expect("color scheme bind group layout")
+        .downcast::<BindGroupLayoutAsset>()
+        .expect("bind group layout asset");
 
     let surface_format = render.surface().format();
 
@@ -104,6 +120,10 @@ pub async fn setup_game<A: AssetSource>(resources: HList!(WGPURenderResource, As
         .device_mut()
         .create_bind_group_layout_from_asset(*camera_bind_group_asset);
     bind_group_layouts.insert("camera".to_owned(), camera_bind_group_layout);
+    let color_scheme_bind_group_layout = render
+        .device_mut()
+        .create_bind_group_layout_from_asset(*color_scheme_bind_group_asset);
+    bind_group_layouts.insert("color-scheme".to_owned(), color_scheme_bind_group_layout);
 
     let pipeline = render.device_mut().create_pipeline_from_asset(
         *pipeline_asset,
@@ -118,14 +138,25 @@ pub async fn setup_game<A: AssetSource>(resources: HList!(WGPURenderResource, As
     let data = unsafe { from_raw_parts(VERTICES.as_ptr() as *const u8, size_of_val(&VERTICES)) };
     render.device().submit_buffer(vertex_buffer, 0, data);
 
-    let uniform_buffer = render.device_mut().create_buffer(
+    let camera_uniform_buffer = render.device_mut().create_buffer(
         4 * size_of::<f32>(),
         BufferUsages::UNIFORM | BufferUsages::COPY_DST,
     );
-    let uniform_buffer_ref = render.device().get_buffer(uniform_buffer).unwrap();
+    let camera_uniform_buffer_ref = render.device().get_buffer(camera_uniform_buffer).unwrap();
     let camera_bind_group = render.device().create_bind_group(
         camera_bind_group_layout,
-        &[BindGroupBinding::Buffer(uniform_buffer_ref)],
+        &[BindGroupBinding::Buffer(camera_uniform_buffer_ref)],
+    );
+
+    let color_scheme_uniform_buffer = render.device_mut().create_buffer(
+        4 * size_of::<f32>(),
+        BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+    );
+    render.device().submit_buffer(color_scheme_uniform_buffer, 0, data_bytes(&[Color::rgb(250, 235, 215, 1.0)]));
+    let color_scheme_uniform_buffer_ref = render.device().get_buffer(color_scheme_uniform_buffer).unwrap();
+    let color_scheme_bind_group = render.device().create_bind_group(
+        color_scheme_bind_group_layout,
+        &[BindGroupBinding::Buffer(color_scheme_uniform_buffer_ref)],
     );
 
     let instance_buffer = render.device_mut().create_buffer(
@@ -138,18 +169,20 @@ pub async fn setup_game<A: AssetSource>(resources: HList!(WGPURenderResource, As
         .with_component::<Transform>()
         .with_component::<Shape>();
     {
-        let triangle = world.new_entity();
-        world.components_mut::<Player>().put(triangle, Player);
-        world.components_mut::<Transform>().put(triangle, Transform::default());
-        world.components_mut::<Shape>().put(triangle, Shape::Triangle);
+        let player = world.new_entity();
+        world.components_mut::<Player>().put(player, Player);
+        world.components_mut::<Transform>().put(player, Transform::default());
+        world.components_mut::<Shape>().put(player, Shape::Ship);
     }
 
     let game = GameResource {
         pipeline,
         vertex_buffer,
         instance_buffer,
-        uniform_buffer,
+        camera_uniform_buffer,
+        color_scheme_uniform_buffer,
         camera_bind_group,
+        color_scheme_bind_group,
         start_time: Instant::now(),
         previous_frame: Instant::now(),
         input_state: Default::default(),
@@ -158,8 +191,8 @@ pub async fn setup_game<A: AssetSource>(resources: HList!(WGPURenderResource, As
     hlist!(game, render, asset_source)
 }
 
-fn data_bytes<T>(data: &T) -> &[u8] {
-    unsafe { from_raw_parts(data as *const T as *const u8, size_of_val(data)) }
+fn data_bytes<T>(data: &[T]) -> &[u8] {
+    unsafe { from_raw_parts(data.as_ptr() as *const u8, size_of_val(data)) }
 }
 
 pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPURenderResource, GameResource, AssetSourceResource<A>)) -> SurfaceEventResult {
@@ -200,6 +233,7 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                     if let Some(transform) = transforms.get(entity) {
                         let transform = Transform {
                             position: transform.position + move_direction,
+                            rotation: 0.0,
                         };
                         transforms.put(entity, transform);
                     }
@@ -209,18 +243,16 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
             // Render game
             {
                 let camera_transform = Vec4::zeros();
-                let camera_transform_data = data_bytes(&camera_transform);
                 render
                     .device()
-                    .submit_buffer(game.uniform_buffer, 0, camera_transform_data);
-
-                let frame = render.surface().get_frame();
-                let mut encoder = render.device().command_encoder(&frame);
+                    .submit_buffer(game.camera_uniform_buffer, 0, data_bytes(&[camera_transform]));
 
                 let transforms = game.world.components::<Transform>();
                 let shapes = game.world.components::<Shape>();
 
-                let mut triangle_transform: Option<Vec3> = None;
+                let mut player_transforms = Vec::new();
+
+                // let mut triangle_transform: Option<Vec3> = None;
                 for (_, shape, transform) in game
                     .world
                     .entity_iter()
@@ -231,38 +263,46 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                             .map(|transform| (entity, shape, transform))
                     })
                 {
-                    if let Shape::Triangle = shape {
-                        triangle_transform = Some(transform.position);
+                    if let Shape::Ship = shape {
+                        // triangle_transform = Some(transform.position);
+                        player_transforms.push(transform);
                         break;
                     }
                 }
 
-                if let Some(position) = triangle_transform {
-                    let elapsed = game.start_time.elapsed().as_secs_f32() * 2.0;
+                let elapsed = game.start_time.elapsed().as_secs_f32() * 2.0;
+                let spin_radius = 0.1;
+                let instances = player_transforms.into_iter()
+                    .map(|Transform { position, rotation }| {
+                        let position = position + Vec3::new(elapsed.sin(), elapsed.cos(), 0.0) * spin_radius;
+                        let translation = Matrix4::new_translation(&position);
+                        let rotation = Rotation3::from_euler_angles(0.0, 0.0, *rotation);
+                        rotation.to_homogeneous() * translation
+                    })
+                    .collect::<Vec<_>>();
 
-                    let spin_radius = 0.1;
-                    let position = position + Vec3::new(elapsed.sin(), elapsed.cos(), 0.0) * spin_radius;
-                    let transform = Matrix4::new_translation(&position);
+                let instances_data = data_bytes(&instances);
+                render.device_mut().resize_buffer(game.instance_buffer, instances_data.len());
+                render
+                    .device()
+                    .submit_buffer(game.instance_buffer, 0, instances_data);
 
-                    let transform_data = data_bytes(&transform);
-                    render
-                        .device()
-                        .submit_buffer(game.instance_buffer, 0, transform_data);
+                let frame = render.surface().get_frame();
+                let mut encoder = render.device().command_encoder(&frame);
 
-                    encoder.render_pass(RenderPass {
-                        pipeline: game.pipeline,
-                        vertices: 0..3,
-                        targets: vec![Target::ScreenTarget {
-                            clear: Some(Color::rgb(0, 3, 22, 1.0)),
-                        }],
-                        vertex_buffers: vec![Some(game.vertex_buffer), Some(game.instance_buffer)],
-                        bind_groups: vec![game.camera_bind_group.clone()],
-                        instances: 0..1,
-                    });
-                    render.device().submit_commands(encoder);
+                encoder.render_pass(RenderPass {
+                    pipeline: game.pipeline,
+                    vertices: 0..4,
+                    targets: vec![Target::ScreenTarget {
+                        clear: Some(Color::rgb(0, 3, 22, 1.0)),
+                    }],
+                    vertex_buffers: vec![Some(game.vertex_buffer), Some(game.instance_buffer)],
+                    bind_groups: vec![game.camera_bind_group.clone(), game.color_scheme_bind_group.clone()],
+                    instances: 0..instances.len() as _,
+                });
+                render.device().submit_commands(encoder);
 
-                    render.surface().present(frame);
-                }
+                render.surface().present(frame);
             }
 
             SurfaceEventResult::Continue

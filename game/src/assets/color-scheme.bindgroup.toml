@@ -1,0 +1,5 @@
+[[entries]]
+visibility = "fragment"
+
+[entries.type.buffer]
+type = "uniform"

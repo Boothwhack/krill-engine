@@ -7,13 +7,13 @@ use std::iter::once;
 use std::ops::{Deref, Range};
 use std::rc::Rc;
 
-use wgpu::{BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BufferDescriptor, ColorTargetState, FragmentState, Label, LoadOp, Operations, PipelineLayoutDescriptor, RenderPassColorAttachment, RenderPassDescriptor, RenderPipelineDescriptor, RequestAdapterOptions, ShaderModuleDescriptor, ShaderSource, TextureViewDescriptor, VertexState};
+use wgpu::{BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BufferDescriptor, ColorTargetState, FragmentState, Label, LoadOp, Operations, PipelineLayoutDescriptor, PrimitiveState, RenderPassColorAttachment, RenderPassDescriptor, RenderPipelineDescriptor, RequestAdapterOptions, ShaderModuleDescriptor, ShaderSource, TextureViewDescriptor, VertexState};
 
 pub use wgpu::BufferUsages;
 use utils::{CompactList};
 pub use utils::Handle;
 use crate::bindgroup::serial::{BindGroupLayoutAsset, BufferType, EntryType, Visibility};
-use crate::pipeline::serial::{RenderPipelineAsset, TargetFormat, VertexFormatDefinition, VertexShaderStepMode};
+use crate::pipeline::serial::{Cull, FaceWinding, RenderPipelineAsset, TargetFormat, Topology, VertexFormatDefinition, VertexShaderStepMode};
 
 pub type TextureFormat = wgpu::TextureFormat;
 
@@ -320,7 +320,26 @@ impl DeviceContext {
             },
 
             layout: Some(&layout),
-            primitive: wgpu::PrimitiveState::default(),
+            primitive: PrimitiveState {
+                topology: match asset.definition.primitive.topology {
+                    Topology::Points => wgpu::PrimitiveTopology::PointList,
+                    Topology::Lines => wgpu::PrimitiveTopology::LineList,
+                    Topology::LineStrip => wgpu::PrimitiveTopology::LineStrip,
+                    Topology::Triangles => wgpu::PrimitiveTopology::TriangleList,
+                    Topology::TriangleStrip => wgpu::PrimitiveTopology::TriangleStrip,
+                },
+                front_face: match asset.definition.primitive.winding {
+                    FaceWinding::CounterClockwise => wgpu::FrontFace::Ccw,
+                    FaceWinding::Clockwise => wgpu::FrontFace::Cw,
+                },
+                cull_mode: match asset.definition.primitive.cull {
+                    None => None,
+                    Some(Cull::Back) => Some(wgpu::Face::Back),
+                    Some(Cull::Front) => Some(wgpu::Face::Front),
+                },
+
+                ..Default::default()
+            },
             multiview: None,
             multisample: wgpu::MultisampleState::default(),
             depth_stencil: None,

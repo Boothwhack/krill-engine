@@ -1,0 +1,40 @@
+[[shader-modules]]
+name = "game"
+path = "game.wgsl"
+
+[[bind-groups]]
+layout = "camera"
+
+[[bind-groups]]
+layout = "color-scheme"
+
+[vertex-shader]
+shader-module = "game"
+entrypoint = "vs_main"
+
+[[vertex-shader.buffers]]
+step-mode = "vertex"
+attributes = [
+    # Position
+    { format = "f32x2" }
+]
+
+[[vertex-shader.buffers]]
+step-mode = "instance"
+attributes = [
+    #Transformation matrix
+    { format = "f32x4" },
+    { format = "f32x4" },
+    { format = "f32x4" },
+    { format = "f32x4" }
+]
+
+[fragment-shader]
+shader-module = "game"
+entrypoint = "fs_main"
+
+[[fragment-shader.targets]]
+format = "surface"
+
+[primitive]
+topology = "triangle-strip"

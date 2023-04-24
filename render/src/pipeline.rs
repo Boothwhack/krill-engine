@@ -16,6 +16,45 @@ pub mod serial {
         pub bind_groups: Vec<BindGroupLayoutDefinition>,
         pub vertex_shader: VertexShaderDefinition,
         pub fragment_shader: Option<FragmentShaderDefinition>,
+        #[serde(default)]
+        pub primitive: PrimitiveDefinition,
+    }
+
+    #[derive(Default, Deserialize, Debug)]
+    #[serde(rename_all = "kebab-case")]
+    pub struct PrimitiveDefinition {
+        #[serde(default)]
+        pub topology: Topology,
+        #[serde(default)]
+        pub winding: FaceWinding,
+        #[serde(default)]
+        pub cull: Option<Cull>,
+    }
+
+    #[derive(Default, Deserialize, Debug)]
+    #[serde(rename_all = "kebab-case")]
+    pub enum Topology {
+        Points,
+        Lines,
+        LineStrip,
+        #[default]
+        Triangles,
+        TriangleStrip,
+    }
+
+    #[derive(Default, Deserialize, Debug)]
+    #[serde(rename_all = "kebab-case")]
+    pub enum FaceWinding {
+        #[default]
+        CounterClockwise,
+        Clockwise,
+    }
+
+    #[derive(Deserialize, Debug)]
+    #[serde(rename_all = "kebab-case")]
+    pub enum Cull {
+        Front,
+        Back,
     }
 
     #[derive(Deserialize, Debug)]

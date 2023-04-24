@@ -240,7 +240,6 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                     .entity_iter()
                     .filter(|entity| players.has(*entity))
                 {
-                    // *transform = Transform { position: transform.position + move_direction * move_speed };
                     if let Some(transform) = transforms.get(entity) {
                         let transform = Transform {
                             position: transform.position + move_direction,
@@ -263,7 +262,6 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
 
                 let mut player_transforms = Vec::new();
 
-                // let mut triangle_transform: Option<Vec3> = None;
                 for (_, shape, transform) in game
                     .world
                     .entity_iter()
@@ -275,7 +273,6 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                     })
                 {
                     if let Shape::Ship = shape {
-                        // triangle_transform = Some(transform.position);
                         player_transforms.push(transform);
                         break;
                     }

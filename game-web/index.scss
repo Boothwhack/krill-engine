@@ -16,6 +16,7 @@ body {
 canvas#krill {
   flex-grow: 1;
   width: 0;
+  outline: none;
 }
 
 div#info-box {

@@ -7,7 +7,7 @@ use engine::render::bindgroup::serial::{BindGroupAssetPipeline, BindGroupLayoutA
 use engine::render::pipeline::serial::{RenderPipelineAsset, RenderPipelineAssetPipeline};
 use engine::render::{BindGroup, BindGroupBinding, Buffer, BufferUsages, Color, DeviceContext, Handle, Pipeline, RenderPass, Target};
 use instant::Instant;
-use nalgebra::{Matrix4, Rotation3, Vector2, Vector3, Vector4};
+use nalgebra::{Matrix4, RealField, Rotation3, Vector2, Vector3, Vector4};
 use std::any::TypeId;
 use std::collections::HashMap;
 use std::mem::{size_of, size_of_val};
@@ -278,8 +278,12 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
         SurfaceEvent::Draw => {
             // Update game state
             {
+                // list of which entities will be deleted at the end of the game tick
                 let mut remove = Vec::new();
+                // components for new entities that will be spawned at the ent of the tick
                 let mut create = Vec::new();
+
+                //
                 {
                     if game.previous_meteor.elapsed().as_secs() >= 10 {
                         game.previous_meteor = Instant::now();
@@ -308,16 +312,18 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                             .scale(0.2);
 
                         let size = 1.0 - (random::<f32>() * 0.5 - 0.5);
+                        let rotation = random::<f32>() * f32::pi() * 2.0;
                         create.push((
                             Transform {
                                 position,
+                                rotation,
                                 size: 1.5 * size,
                                 repeats: true,
                                 velocity,
                                 ..Transform::default()
                             },
                             Shape::Meteor,
-                            Collider { size: 0.045 * size },
+                            Collider { size: 0.05 * size },
                         ));
                     }
                 }
@@ -328,12 +334,12 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                     let mut transforms = game.world.components_mut::<Transform>();
                     let players = game.world.components::<Player>();
 
-                    let rotation_speed = 2.0;
+                    let rotation_speed = 2.1;
                     let player_rotation = (if game.input_state.left { 1.0 } else { 0.0 } +
                         if game.input_state.right { -1.0 } else { 0.0 }) * rotation_speed * elapsed_since_previous_frame;
 
-                    let max_speed = 1.0;
-                    let thrust_amount = 0.5;
+                    let max_speed = 1.2;
+                    let thrust_amount = 0.7;
                     let thrust_vec = Vec3::new(0.0, if game.input_state.up { 1.0 } else { 0.0 } + if game.input_state.down { -1.0 } else { 0.0 }, 0.0);
 
                     let bullet_speed = 2.0;
@@ -440,10 +446,10 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                         }
                     }
 
-                    let split_size = 0.7;
-                    let split_angle = 0.4;
-                    let split_velocity = 1.25;
-                    let split_min_size = 0.4;
+                    let split_size = 0.6;
+                    let split_angle = 0.5;
+                    let split_velocity = 1.2;
+                    let split_min_size = 0.5;
 
                     // check if a bullet is colliding with a meteor
                     for (bullet, bullet_collider, bullet_transform) in game.world.entity_iter()
@@ -459,18 +465,25 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                                 remove.push(meteor);
 
                                 if meteor_transform.size > split_min_size {
+                                    // ±0.25
+                                    let rotation = random::<f32>() * f32::pi() * 2.0;
+                                    let angle_random = random::<f32>() * 0.5 - 0.25;
                                     create.push((
                                         Transform {
-                                            velocity: Rotation3::from_axis_angle(&Vec3::z_axis(), split_angle) * meteor_transform.velocity * split_velocity,
+                                            rotation,
+                                            velocity: Rotation3::from_axis_angle(&Vec3::z_axis(), split_angle + angle_random) * meteor_transform.velocity * split_velocity,
                                             size: meteor_transform.size * split_size,
                                             ..meteor_transform.clone()
                                         },
                                         Shape::Meteor,
                                         Collider { size: meteor_collider.size * split_size },
                                     ));
+                                    let rotation = random::<f32>() * f32::pi() * 2.0;
+                                    let angle_random = random::<f32>() * 0.5 - 0.25;
                                     create.push((
                                         Transform {
-                                            velocity: Rotation3::from_axis_angle(&Vec3::z_axis(), -split_angle) * meteor_transform.velocity * split_velocity,
+                                            rotation,
+                                            velocity: Rotation3::from_axis_angle(&Vec3::z_axis(), -split_angle + angle_random) * meteor_transform.velocity * split_velocity,
                                             size: meteor_transform.size * split_size,
                                             ..meteor_transform.clone()
                                         },

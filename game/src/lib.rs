@@ -13,7 +13,6 @@ use std::collections::HashMap;
 use std::mem::{size_of, size_of_val};
 use std::ops::Deref;
 use std::slice::from_raw_parts;
-use std::time::Duration;
 use float_ord::FloatOrd;
 use rand::random;
 use winit::event::{DeviceEvent, ElementState, VirtualKeyCode};

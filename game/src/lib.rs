@@ -242,7 +242,9 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                     .filter(|entity| players.has(*entity))
                 {
                     if let Some(transform) = transforms.get(entity) {
-                        let thrust_angle = Rotation3::from_axis_angle(&Vec3::z_axis(), transform.rotation);
+                        let rotation = transform.rotation + rotation;
+
+                        let thrust_angle = Rotation3::from_axis_angle(&Vec3::z_axis(), rotation);
                         let thrust = thrust_angle * thrust_vec * thrust_amount * elapsed_since_previous_frame;
 
                         let mut velocity = transform.velocity + thrust;
@@ -250,11 +252,24 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                             velocity = velocity.normalize() * max_speed;
                         }
 
-                        let transform = Transform {
-                            position: transform.position + velocity * elapsed_since_previous_frame,
-                            rotation: transform.rotation + rotation,
-                            velocity,
+                        let position = transform.position + velocity * elapsed_since_previous_frame;
+                        let x = if position.x > game.bounds.x {
+                            -game.bounds.x
+                        } else if position.x < -game.bounds.x {
+                            game.bounds.x
+                        } else {
+                            position.x
                         };
+                        let y = if position.y > game.bounds.y {
+                            -game.bounds.y
+                        } else if position.y < -game.bounds.y {
+                            game.bounds.y
+                        } else {
+                            position.y
+                        };
+                        let position = Vec3::new(x, y, 0.0);
+
+                        let transform = Transform { position, rotation, velocity };
                         transforms.put(entity, transform);
                     }
                 }

@@ -18,7 +18,7 @@ var<uniform> camera: CameraUniform;
 fn vs_main(input: VertexInput) -> @builtin(position) vec4<f32> {
     var transform_mat = mat4x4(input.transform_mat0, input.transform_mat1, input.transform_mat2, input.transform_mat3);
 
-    return transform_mat * camera.view_mat * (vec4(input.position, 0.0, 1.0));
+    return camera.view_mat*transform_mat * (vec4(input.position, 0.0, 1.0));
 }
 
 @group(1) @binding(0)
@@ -26,5 +26,5 @@ var<uniform> color: vec4<f32>;
 
 @fragment
 fn fs_main() -> @location(0) vec4<f32> {
-    return color; //vec4(45.0 / 255.0, 106.0 / 255.0, 206.0 / 255.0, 1.0);
+    return color;
 }

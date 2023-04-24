@@ -238,7 +238,6 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                 let rotation_speed = 1.0;
                 let rotation = (if game.input_state.left { 1.0 } else { 0.0 } +
                     if game.input_state.right { -1.0 } else { 0.0 }) * rotation_speed * elapsed_since_previous_frame;
-                log::info!("Rotation: {}", rotation);
 
                 for entity in game
                     .world

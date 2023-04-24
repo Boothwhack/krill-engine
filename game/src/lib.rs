@@ -55,6 +55,7 @@ pub struct GameResource {
     previous_frame: Instant,
     input_state: InputState,
     world: World,
+    bounds: Vec2,
 }
 
 const VERTICES: [f32; 2 * 4] = [
@@ -139,7 +140,7 @@ pub async fn setup_game<A: AssetSource>(resources: HList!(WGPURenderResource, As
     render.device().submit_buffer(vertex_buffer, 0, data);
 
     let camera_uniform_buffer = render.device_mut().create_buffer(
-        4 * size_of::<f32>(),
+        4 * 4 * size_of::<f32>(),
         BufferUsages::UNIFORM | BufferUsages::COPY_DST,
     );
     let camera_uniform_buffer_ref = render.device().get_buffer(camera_uniform_buffer).unwrap();
@@ -187,6 +188,7 @@ pub async fn setup_game<A: AssetSource>(resources: HList!(WGPURenderResource, As
         previous_frame: Instant::now(),
         input_state: Default::default(),
         world,
+        bounds: Vec2::new(1.0, 1.0),
     };
     hlist!(game, render, asset_source)
 }
@@ -204,6 +206,15 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
         SurfaceEvent::Resize { width, height } => {
             let (surface, device) = render.get_mut();
             surface.configure(device, width, height);
+
+            // update camera
+            let aspect_ratio = width as f32 / height as f32;
+
+            game.bounds = if aspect_ratio > 1.0 {
+                Vec2::new(1.0, height as f32 / width as f32)
+            } else {
+                Vec2::new(aspect_ratio, 1.0)
+            };
 
             SurfaceEventResult::Continue
         }
@@ -242,10 +253,10 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
 
             // Render game
             {
-                let camera_transform = Vec4::zeros();
-                render
-                    .device()
-                    .submit_buffer(game.camera_uniform_buffer, 0, data_bytes(&[camera_transform]));
+                let camera_scale = Vec2::new(1.0 / game.bounds.x, 1.0 / game.bounds.y);
+                let view_matrix: Matrix4<f32> = Matrix4::new_nonuniform_scaling(&Vec3::new(camera_scale.x, camera_scale.y, 1.0));
+
+                render.device().submit_buffer(game.camera_uniform_buffer, 0, data_bytes(&[view_matrix]));
 
                 let transforms = game.world.components::<Transform>();
                 let shapes = game.world.components::<Shape>();

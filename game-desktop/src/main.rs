@@ -1,12 +1,8 @@
-use assets::source::desktop_fs::DirectoryAssetSource;
-use engine::asset_resource::AssetSourceResource;
 use engine::asset_resource::desktop::DirectoryAssetSourceExt;
 use engine::process::ProcessBuilder;
-use engine::surface::{RunExt, SurfaceEventResult};
-use engine::utils::HList;
-use engine::utils::hlist::{Has, ToMut};
+use engine::surface::RunExt;
 use engine::winit_surface::WinitSetupExt;
-use engine::wgpu_render::{WGPURenderResource, WGPURenderSetupExt};
+use engine::wgpu_render::WGPURenderSetupExt;
 use game::{run_game, setup_game};
 
 #[tokio::main]

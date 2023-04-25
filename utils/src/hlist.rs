@@ -103,7 +103,16 @@ macro_rules! hlist {
     };
     ($head:expr, $($tail:expr),* $(,)?) => {
         ($head, hlist!($($tail),*))
-    }
+    };
+}
+
+/// Macro for destructuring an hlist.
+#[macro_export]
+macro_rules! delist {
+    ($head:pat $(,)?) => { ($head,_) };
+    ($head:pat, $($tail:pat),* $(,)?) => {
+        ($head, delist!($($tail),*))
+    };
 }
 
 #[macro_export]
@@ -136,6 +145,31 @@ mod tests {
 
         let three_list: HList!(u32, f32, bool) = hlist!(25u32, 0.6f32, false);
         assert_eq!(three_list, (25u32, (0.6f32, (false, ()))));
+    }
+
+    struct Nesting {
+        value: String,
+    }
+
+    #[test]
+    fn destruct() {
+        let list = hlist!(12u32, 9.7f32, false);
+        let delist!(variable) = list;
+        assert_eq!(12u32, variable);
+
+        let delist!(int, float, boolean) = list;
+        assert_eq!(12u32, int);
+        assert_eq!(9.7f32, float);
+        assert_eq!(false, boolean);
+
+        let delist!(mut int) = list;
+        assert_eq!(12u32, int);
+        int = 13u32;
+        assert_eq!(13u32, int);
+
+        let list = hlist!(Nesting {value: "Hello".to_owned()});
+        let delist!(Nesting{value}) = list;
+        assert_eq!("Hello".to_owned(), value);
     }
 
     #[test]

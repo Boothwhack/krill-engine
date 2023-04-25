@@ -20,8 +20,8 @@ use rand::distributions::Standard;
 use rand::rngs::StdRng;
 use winit::event::{DeviceEvent, ElementState, VirtualKeyCode};
 use engine::surface::{SurfaceEvent, SurfaceEventResult};
-use engine::utils::{HList, hlist};
-use engine::utils::hlist::{Has, ToMut};
+use engine::utils::{delist, HList, hlist};
+use engine::utils::hlist::ToMut;
 use engine::wgpu_render::WGPURenderResource;
 
 #[derive(Debug, Default)]
@@ -161,17 +161,6 @@ const SHIP_VERTICES: [Vec2; 4] = [
     Vec2::new(0.3, -0.3),
 ];
 
-const METEOR_VERTICES: [Vec2; 8] = [
-    Vec2::new(0.0, 0.5),
-    Vec2::new(0.4, 0.4),
-    Vec2::new(-0.4, 0.4),
-    Vec2::new(0.5, 0.0),
-    Vec2::new(-0.5, 0.0),
-    Vec2::new(0.4, -0.4),
-    Vec2::new(-0.4, -0.4),
-    Vec2::new(0.0, -0.5),
-];
-
 const BULLET_VERTICES: [Vec2; 4] = [
     Vec2::new(0.04, -0.08),
     Vec2::new(0.04, 0.08),
@@ -190,8 +179,7 @@ fn calculate_game_bounds(width: u32, height: u32) -> Vec2 {
 }
 
 pub async fn setup_game<A: AssetSource>(resources: HList!(WGPURenderResource, AssetSourceResource<A>)) -> HList!(GameResource, WGPURenderResource, AssetSourceResource<A>) {
-    let (mut render, resources): (WGPURenderResource, _) = resources.pick();
-    let (asset_source, _): (AssetSourceResource<A>, _) = resources.pick();
+    let delist!(mut render, asset_source) = resources;
 
     let asset_pipelines = {
         let mut pipelines = HashMap::new();
@@ -314,9 +302,7 @@ pub async fn setup_game<A: AssetSource>(resources: HList!(WGPURenderResource, As
 }
 
 pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPURenderResource, GameResource, AssetSourceResource<A>)) -> SurfaceEventResult {
-    let resources = resources.to_mut();
-    let (game, resources): (&mut GameResource, _) = resources.pick();
-    let (render, _): (&mut WGPURenderResource, _) = resources.pick();
+    let delist!(render, game) = resources.to_mut();
 
     match event {
         SurfaceEvent::Resize { width, height } => {

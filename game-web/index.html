@@ -8,7 +8,11 @@
 <body>
 <div id="info-box">
     <h1>Krill Game Engine</h1>
-    <h2>A small data-oriented game engine written in <i class="fa-brands fa-rust fa-xs"></i> Rust</h2>
+    <h2>A small data-driven game engine written in <i class="fa-brands fa-rust fa-xs"></i> Rust</h2>
+    <p>To the right is a recreation of a classic arcade game. Steer the spaceship with the arrow-keys and shoot with the spacebar. The game is running on the Krill engine and is capable of running in all modern browsers.</p>
+    <p>From the start I have chosen to build with technologies that support compiling to a multitude of platforms. The Rust compiler has built-in support for compiling to WebAssembly, which allows for near-native performance on the web.</p>
+    <p>The code for this demo is split into three components. There's the core game application code which is written using platform-agnostic APIs. This core gets invoked by two separate platform-specific executable targets; one for web browsers and one for desktop computers.</p>
+    <p>These components are located in the <a href="https://github.com/Boothwhack/krill-engine/tree/main/game" target="_blank">game</a>, <a href="https://github.com/Boothwhack/krill-engine/tree/main/game-web" target="_blank">game-web</a> and <a href="https://github.com/Boothwhack/krill-engine/tree/main/game-desktop" target="_blank">game-desktop</a> directories respectively.</p>
 </div>
 </body>
 </html>

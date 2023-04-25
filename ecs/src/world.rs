@@ -3,6 +3,8 @@ use std::any::{Any, TypeId};
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use frunk::{HList, hlist, ToMut};
+use frunk::hlist::{HFoldLeftable, HList, HMappable, Sculptor, Selector};
 use crate::store::{ComponentStore};
 
 pub type Generation = u32;
@@ -108,7 +110,7 @@ impl World {
         );
     }
 
-    pub fn with_component<C:'static>(mut self) -> Self {
+    pub fn with_component<C: 'static>(mut self) -> Self {
         self.add_component::<C>();
         self
     }
@@ -133,7 +135,7 @@ impl World {
         ComponentStoreReadLock::lock(&self.components[&TypeId::of::<C>()])
     }
 
-    pub fn components_mut<C: 'static>(&self) -> ComponentStoreWriteLock<'_,C> {
+    pub fn components_mut<C: 'static>(&self) -> ComponentStoreWriteLock<'_, C> {
         ComponentStoreWriteLock::lock(&self.components[&TypeId::of::<C>()])
     }
 
@@ -143,6 +145,31 @@ impl World {
             .filter_map(|(index, state)| state.alive_generation().map(|gen| (index, gen)))
             .map(|(index, generation)| EntityId { index, generation })
     }
+}
+
+struct ComponentBinding<'a, C: 'static, L: LockType> {
+    store: ComponentStoreLock<'a, C, L>,
+}
+
+impl<'a, C: 'static, L: LockType> ComponentBinding<'a, C, L> {
+    fn get_ref(&self, entity: EntityId) -> Option<&C> {
+        self.store.get(entity)
+    }
+}
+
+impl<'a, C: 'static> ComponentBinding<'a, C, WriteLockType> {
+    fn put(&mut self, entity: EntityId, component: C) {
+        self.store.put(entity, component);
+    }
+}
+
+trait EntityIterator<'a, L> {
+    type Components;
+}
+
+struct BasicEntityIterator<'a, L> {
+    world: &'a World,
+    bindings: L,
 }
 
 pub trait LockType {
@@ -176,8 +203,8 @@ pub struct ComponentStoreLock<'a, C: 'static, L: LockType> {
     phantom_data: PhantomData<C>,
 }
 
-pub type ComponentStoreReadLock<'a, C: 'static> = ComponentStoreLock<'a, C, ReadLockType>;
-pub type ComponentStoreWriteLock<'a, C: 'static> = ComponentStoreLock<'a, C, WriteLockType>;
+pub type ComponentStoreReadLock<'a, C> = ComponentStoreLock<'a, C, ReadLockType>;
+pub type ComponentStoreWriteLock<'a, C> = ComponentStoreLock<'a, C, WriteLockType>;
 
 impl<'a, C: 'static, L: LockType> ComponentStoreLock<'a, C, L> {
     fn lock(rwlock: &'a RwLock<GenericComponentStore>) -> Self {

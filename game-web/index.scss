@@ -8,6 +8,8 @@ body {
   background-color: #000316;
   display: flex;
   font-family: 'Inter', sans-serif;
+  font-weight: 400;
+  font-size: 1.5em;
   color: #FAEBD7FF;
   width: 100vw;
   height: 100vh;
@@ -25,16 +27,21 @@ div#info-box {
   flex-basis: 30%;
   flex-shrink: 0;
   padding: 1em 2em;
+  overflow: scroll;
 }
 
 h1 {
-  font-size: 4em;
+  font-size: 3em;
   font-weight: 300;
   text-align: center;
 }
 
 h2 {
-  font-size: 2em;
+  font-size: 1.6em;
   text-align: center;
   font-weight: 400;
+}
+
+a {
+  color: #ade2e3;
 }

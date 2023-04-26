@@ -20,7 +20,7 @@ use rand::distributions::Standard;
 use rand::rngs::StdRng;
 use winit::event::{DeviceEvent, ElementState, VirtualKeyCode};
 use engine::surface::{SurfaceEvent, SurfaceEventResult};
-use engine::utils::{delist, HList, hlist};
+use engine::utils::{HList, hlist};
 use engine::utils::hlist::ToMut;
 use engine::wgpu_render::WGPURenderResource;
 
@@ -577,23 +577,13 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
 
                 render.device().submit_buffer(game.camera_uniform_buffer, 0, data_bytes(&[view_matrix]));
 
-                let transforms = game.state.world.components::<Transform>();
-                let shapes = game.state.world.components::<Shape>();
-
                 let mut player_transforms = Vec::new();
                 let mut meteor_transforms = Vec::new();
                 let mut bullet_transforms = Vec::new();
 
-                for (_, shape, transform) in game.state
-                    .world
-                    .entity_iter()
-                    .filter_map(|entity| shapes.get(entity).map(|shape| (entity, shape)))
-                    .filter_map(|(entity, shape)| {
-                        transforms
-                            .get(entity)
-                            .map(|transform| (entity, shape, transform))
-                    })
-                {
+                let shapes = View::builder().required::<Shape>().required::<Transform>()
+                    .build(&game.state.world);
+                for (_, (shape, (transform, ()))) in shapes.iter() {
                     match shape {
                         Shape::Ship => player_transforms.push(transform),
                         Shape::Meteor => meteor_transforms.push(transform),

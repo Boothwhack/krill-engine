@@ -1,15 +1,14 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap};
 use std::any::{Any, TypeId};
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
-use frunk::{HList, hlist, ToMut};
-use frunk::hlist::{HFoldLeftable, HList, HMappable, Sculptor, Selector};
+use utils::hlist::{FnMapHList, Mappable, Prepend};
 use crate::store::{ComponentStore};
 
 pub type Generation = u32;
 
-#[derive(Copy, Clone)]
+#[derive(Eq, PartialEq, Copy, Clone, Debug)]
 pub struct EntityId {
     pub(crate) index: usize,
     pub(crate) generation: Generation,
@@ -147,29 +146,219 @@ impl World {
     }
 }
 
-struct ComponentBinding<'a, C: 'static, L: LockType> {
-    store: ComponentStoreLock<'a, C, L>,
+pub struct ComponentBinding<T, R> {
+    typ: PhantomData<T>,
+    requirement: PhantomData<R>,
 }
 
-impl<'a, C: 'static, L: LockType> ComponentBinding<'a, C, L> {
-    fn get_ref(&self, entity: EntityId) -> Option<&C> {
-        self.store.get(entity)
+impl<T, R> Default for ComponentBinding<T, R> {
+    fn default() -> Self {
+        ComponentBinding {
+            typ: Default::default(),
+            requirement: Default::default(),
+        }
     }
 }
 
-impl<'a, C: 'static> ComponentBinding<'a, C, WriteLockType> {
-    fn put(&mut self, entity: EntityId, component: C) {
-        self.store.put(entity, component);
+impl<T, R> Clone for ComponentBinding<T, R> {
+    fn clone(&self) -> Self {
+        ComponentBinding::default()
     }
 }
 
-trait EntityIterator<'a, L> {
-    type Components;
+impl<T, R> Copy for ComponentBinding<T, R> {}
+
+pub trait BindingRequirement {
+    type Resolved<T, C>: Prepend
+        where C: Prepend;
+
+    fn resolve<T, C>(component: Option<T>, list: C) -> Result<Self::Resolved<T, C>, ()>
+        where C: Prepend;
 }
 
-struct BasicEntityIterator<'a, L> {
+pub struct Required;
+
+impl BindingRequirement for Required {
+    type Resolved<T, C> = (T, C)
+        where C: Prepend;
+
+    fn resolve<T, C>(component: Option<T>, list: C) -> Result<(T, C), ()>
+        where C: Prepend {
+        let list = match component {
+            Some(component) => Ok(list.prepend(component)),
+            None => Err(())
+        };
+        list
+        //component.map(|component| list.prepend(component)).ok_or(())
+    }
+}
+
+pub struct Optional;
+
+impl BindingRequirement for Optional {
+    type Resolved<T, C> = (Option<T>, C)
+        where C: Prepend;
+
+    fn resolve<T, C>(component: Option<T>, list: C) -> Result<(Option<T>, C), ()>
+        where C: Prepend {
+        Ok(list.prepend(component))
+    }
+}
+
+pub struct Marked;
+
+impl BindingRequirement for Marked {
+    type Resolved<T, C> = C
+        where C: Prepend;
+
+    fn resolve<T, C>(component: Option<T>, list: C) -> Result<C, ()>
+        where C: Prepend {
+        component.map(|_| list).ok_or(())
+    }
+}
+
+pub struct Bound<'v, T: 'static, R: BindingRequirement> {
+    store: ComponentStoreLock<'v, T, ReadLockType>,
+    binding: ComponentBinding<T, R>,
+}
+
+pub struct StoreLocker<'a> {
     world: &'a World,
-    bindings: L,
+}
+
+impl<'a, T, R, Tail, RTail> FnMapHList<(ComponentBinding<T, R>, Tail), (Bound<'a, T, R>, RTail)> for StoreLocker<'a>
+    where T: 'static,
+          R: BindingRequirement,
+          Self: FnMapHList<Tail, RTail> {
+    fn invoke(self, list: (ComponentBinding<T, R>, Tail)) -> (Bound<'a, T, R>, RTail) {
+        let (binding, tail) = list;
+        let store = self.world.components();
+        (Bound { store, binding }, self.invoke(tail))
+    }
+}
+
+impl<'a> FnMapHList<(), ()> for StoreLocker<'a> {
+    fn invoke(self, _list: ()) -> () {
+        ()
+    }
+}
+
+pub struct ViewBuilder<C> {
+    components: C,
+}
+
+impl ViewBuilder<()> {
+    fn new() -> Self {
+        Self { components: () }
+    }
+}
+
+impl<C> ViewBuilder<C>
+    where C: Prepend {
+    fn with_binding<T: 'static, R>(self, binding: ComponentBinding<T, R>) -> ViewBuilder<(ComponentBinding<T, R>, C)> {
+        ViewBuilder { components: self.components.prepend(binding) }
+    }
+
+    pub fn required<T: 'static>(self) -> ViewBuilder<(ComponentBinding<T, Required>, C)> {
+        self.with_binding(ComponentBinding::default())
+    }
+
+    pub fn optional<T: 'static>(self) -> ViewBuilder<(ComponentBinding<T, Optional>, C)> {
+        self.with_binding(ComponentBinding::default())
+    }
+
+    pub fn marked<T: 'static>(self) -> ViewBuilder<(ComponentBinding<T, Marked>, C)> {
+        self.with_binding(ComponentBinding::default())
+    }
+
+    pub fn build<'a, R>(self, world: &'a World) -> View<'a, R>
+        where C: Mappable,
+              R: Bounds,
+              StoreLocker<'a>: FnMapHList<C, R> {
+        let stores = self.components.map(StoreLocker { world });
+        View { world, bounds: stores }
+    }
+}
+
+pub struct View<'w, B: Bounds> {
+    world: &'w World,
+    bounds: B,
+}
+
+impl<'w> View<'w, ()> {
+    pub fn builder() -> ViewBuilder<()> {
+        ViewBuilder::new()
+    }
+}
+
+impl<'w, B: Bounds> View<'w, B> {
+    pub fn iter<'v>(&'v self) -> EntityIterator<'w, 'v, B, impl 'w + Iterator<Item=EntityId>>
+        where 'w: 'v {
+        let iter = self.world.entity_iter();
+        EntityIterator {
+            view: self,
+            iter,
+        }
+    }
+}
+
+pub trait Bounds {
+    type Result<'a, C>
+        where Self: 'a,
+              C: 'a + Prepend;
+
+    fn match_entity<'v, C>(&'v self, entity: EntityId, list: C) -> Option<Self::Result<'v, C>>
+        where C: 'v + Prepend;
+}
+
+impl<'b, T: 'static, R, Tail> Bounds for (Bound<'b, T, R>, Tail)
+    where R: BindingRequirement,
+          Tail: Bounds {
+    type Result<'a, C> = Tail::Result<'a, R::Resolved<&'a T, C>>
+        where Self: 'a,
+              C: 'a + Prepend;
+
+    fn match_entity<'v, C>(&'v self, entity: EntityId, list: C) -> Option<Self::Result<'v, C>>
+        where C: 'v + Prepend {
+        let component = self.0.store.get(entity);
+        let list = match R::resolve(component, list) {
+            Ok(list) => list,
+            Err(_) => return None,
+        };
+
+        self.1.match_entity(entity, list)
+    }
+}
+
+impl Bounds for () {
+    type Result<'a, C> = C
+        where Self: 'a,
+              C: 'a + Prepend;
+
+    fn match_entity<'w, C>(&self, _entity: EntityId, list: C) -> Option<C>
+        where C: 'w + Prepend {
+        Some(list)
+    }
+}
+
+pub struct EntityIterator<'w, 'v, B: Bounds, I: 'w + Iterator<Item=EntityId>> {
+    view: &'v View<'w, B>,
+    iter: I,
+}
+
+impl<'w, 'v, B, I> Iterator for EntityIterator<'w, 'v, B, I>
+    where B: Bounds,
+          I: Iterator<Item=EntityId> {
+    type Item = (EntityId, B::Result<'v, ()>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some(candidate) = self.iter.next() {
+            if let Some(matched) = self.view.bounds.match_entity(candidate, ()) {
+                return Some((candidate, matched));
+            }
+        }
+        None
+    }
 }
 
 pub trait LockType {
@@ -231,10 +420,17 @@ impl<'a, C: 'static> DerefMut for ComponentStoreLock<'a, C, WriteLockType> {
 
 #[cfg(test)]
 mod tests {
-    use crate::world::World;
+    use utils::hlist;
+    use crate::world::{ViewBuilder, World};
 
     #[derive(PartialEq, Eq, Debug)]
     struct Label(String);
+
+    struct Player {
+        health: f32,
+    }
+
+    struct Enemy;
 
     #[test]
     fn world_drop_entity() {
@@ -308,5 +504,59 @@ mod tests {
             assert!(labels.has(entity_c));
             assert_eq!(labels.get(entity_c), Some(&Label("Entity C".to_owned())));
         }
+    }
+
+    #[test]
+    fn system() {
+        let mut world = World::default()
+            .with_component::<Label>()
+            .with_component::<Player>()
+            .with_component::<Enemy>();
+
+        let entity_a = world.new_entity();
+        let entity_b = world.new_entity();
+        let entity_c = world.new_entity();
+
+        {
+            let mut labels = world.components_mut::<Label>();
+            labels.put(entity_a, Label("Entity A".to_owned()));
+            labels.put(entity_b, Label("Entity B".to_owned()));
+            labels.put(entity_c, Label("Entity C".to_owned()));
+
+            let mut players = world.components_mut::<Player>();
+            players.put(entity_a, Player { health: 5.5 });
+
+            let mut enemies = world.components_mut::<Enemy>();
+            enemies.put(entity_c, Enemy);
+        }
+
+        let view = ViewBuilder::new()
+            .required::<Label>()
+            .build(&world);
+
+        let labels = view.iter().collect::<Vec<_>>();
+        assert_eq!(vec![
+            (entity_a, hlist!(&Label("Entity A".to_owned()))),
+            (entity_b, hlist!(&Label("Entity B".to_owned()))),
+            (entity_c, hlist!(&Label("Entity C".to_owned()))),
+        ], labels);
+
+        let view = ViewBuilder::new()
+            .required::<Label>()
+            .marked::<Player>()
+            .build(&world);
+        let players = view.iter().collect::<Vec<_>>();
+        assert_eq!(vec![
+            (entity_a, hlist!(&Label("Entity A".to_owned()))),
+        ], players);
+
+        let view = ViewBuilder::new()
+            .required::<Label>()
+            .marked::<Enemy>()
+            .build(&world);
+        let enemies = view.iter().collect::<Vec<_>>();
+        assert_eq!(vec![
+            (entity_c, hlist!(&Label("Entity C".to_owned()))),
+        ], enemies);
     }
 }

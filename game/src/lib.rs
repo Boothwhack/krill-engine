@@ -2,7 +2,7 @@ use engine::asset_resource::AssetSourceResource;
 use engine::assets::path::AssetPath;
 use engine::assets::source::AssetSource;
 use engine::assets::AssetPipelines;
-use engine::ecs::world::World;
+use engine::ecs::world::{View, World};
 use engine::render::bindgroup::serial::{BindGroupAssetPipeline, BindGroupLayoutAsset};
 use engine::render::pipeline::serial::{RenderPipelineAsset, RenderPipelineAssetPipeline};
 use engine::render::{BindGroup, BindGroupBinding, Buffer, BufferUsages, Color, DeviceContext, Handle, Pipeline, RenderPass, Target};
@@ -179,7 +179,8 @@ fn calculate_game_bounds(width: u32, height: u32) -> Vec2 {
 }
 
 pub async fn setup_game<A: AssetSource>(resources: HList!(WGPURenderResource, AssetSourceResource<A>)) -> HList!(GameResource, WGPURenderResource, AssetSourceResource<A>) {
-    let delist!(mut render, asset_source) = resources;
+    let (mut render, resources) = resources;
+    let (asset_source, _) = resources;
 
     let asset_pipelines = {
         let mut pipelines = HashMap::new();
@@ -302,7 +303,8 @@ pub async fn setup_game<A: AssetSource>(resources: HList!(WGPURenderResource, As
 }
 
 pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPURenderResource, GameResource, AssetSourceResource<A>)) -> SurfaceEventResult {
-    let delist!(render, game) = resources.to_mut();
+    let (render, resources) = resources.to_mut();
+    let (game, _) = resources;
 
     match event {
         SurfaceEvent::Resize { width, height } => {
@@ -481,21 +483,19 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                 }
 
                 {
-                    let players = game.state.world.components::<Player>();
-                    let meteors = game.state.world.components::<Meteor>();
-                    let bullets = game.state.world.components::<Bullet>();
-                    let colliders = game.state.world.components::<Collider>();
-                    let transforms = game.state.world.components::<Transform>();
+                    let players = View::builder()
+                        .marked::<Player>().required::<Collider>().required::<Transform>()
+                        .build(&game.state.world);
+                    let meteors = View::builder()
+                        .marked::<Meteor>().required::<Collider>().required::<Transform>()
+                        .build(&game.state.world);
+                    let bullets = View::builder()
+                        .marked::<Bullet>().required::<Collider>().required::<Transform>()
+                        .build(&game.state.world);
 
                     // check if a player is colliding with a meteor
-                    for (player, player_collider, player_transform) in game.state.world.entity_iter()
-                        .filter_map(|entity| colliders.get(entity).map(|collider| (entity, collider)))
-                        .filter(|(entity, _)| players.has(*entity))
-                        .filter_map(|(entity, collider)| transforms.get(entity).map(|transform| (entity, collider, transform))) {
-                        for (meteor_collider, meteor_transform) in game.state.world.entity_iter()
-                            .filter_map(|entity| colliders.get(entity).map(|collider| (entity, collider)))
-                            .filter(|(entity, _)| meteors.has(*entity))
-                            .filter_map(|(entity, collider)| transforms.get(entity).map(|transform| (collider, transform))) {
+                    for (player, (player_collider, (player_transform, _))) in players.iter() {
+                        for (_, (meteor_collider, (meteor_transform, _))) in meteors.iter() {
                             if collides(player_collider, &player_transform.position, meteor_collider, &meteor_transform.position) {
                                 remove.push(player);
                             }
@@ -508,14 +508,8 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                     let split_min_size = 0.5;
 
                     // check if a bullet is colliding with a meteor
-                    for (bullet, bullet_collider, bullet_transform) in game.state.world.entity_iter()
-                        .filter_map(|entity| colliders.get(entity).map(|collider| (entity, collider)))
-                        .filter(|(entity, _)| bullets.has(*entity))
-                        .filter_map(|(entity, collider)| transforms.get(entity).map(|transform| (entity, collider, transform))) {
-                        for (meteor, meteor_collider, meteor_transform) in game.state.world.entity_iter()
-                            .filter_map(|entity| colliders.get(entity).map(|collider| (entity, collider)))
-                            .filter(|(entity, _)| meteors.has(*entity))
-                            .filter_map(|(entity, collider)| transforms.get(entity).map(|transform| (entity, collider, transform))) {
+                    for (bullet, (bullet_collider, (bullet_transform, _))) in bullets.iter() {
+                        for (meteor, (meteor_collider, (meteor_transform, _))) in meteors.iter() {
                             if collides(bullet_collider, &bullet_transform.position, meteor_collider, &meteor_transform.position) {
                                 remove.push(bullet);
                                 remove.push(meteor);

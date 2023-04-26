@@ -1,9 +1,13 @@
 #![allow(non_snake_case)]
 
+mod fold;
 mod has;
+mod map;
 mod shape;
 
+pub use fold::*;
 pub use has::*;
+pub use map::*;
 pub use shape::*;
 
 pub trait Prepend {

@@ -1,5 +1,8 @@
 name: Deploy WASM web app to Github Pages
-on: [push]
+on:
+  push:
+    branches:
+      - main
 jobs:
   build:
     runs-on: ubuntu-latest

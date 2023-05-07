@@ -14,12 +14,12 @@ jobs:
       - run: rustup default nightly
       - run: rustup target add wasm32-unknown-unknown
       - uses: actions/checkout@v3
-      - working-directory: game-web
+      - working-directory: meteors
         run: trunk build --release --public-url /krill-engine
       - name: Upload Github Pages artifact
         uses: actions/upload-pages-artifact@v1
         with:
-          path: game-web/dist
+          path: meteors/dist
   deploy:
     needs: build
     permissions:

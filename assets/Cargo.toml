@@ -3,15 +3,13 @@ name = "assets"
 version = "0.1.0"
 edition = "2021"
 
-[features]
-desktop_fs = []
-web_request = ["dep:reqwest"]
-
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 async-trait = "0.1"
 once_cell = "1.17"
 regex = "1.7"
-reqwest = { version = "0.11", optional = true }
 thiserror = "1.0"
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+reqwest = "0.11"

@@ -414,6 +414,7 @@ dependencies = [
  "raw-window-handle 0.5.2",
  "render",
  "utils",
+ "web-sys",
  "winit",
 ]
 
@@ -631,7 +632,6 @@ dependencies = [
 name = "game-desktop"
 version = "0.1.0"
 dependencies = [
- "assets",
  "engine",
  "env_logger",
  "game",
@@ -642,7 +642,6 @@ dependencies = [
 name = "game-web"
 version = "0.1.0"
 dependencies = [
- "assets",
  "console_error_panic_hook",
  "console_log",
  "engine",

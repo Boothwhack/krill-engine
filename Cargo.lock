@@ -413,7 +413,10 @@ dependencies = [
  "never-say-never",
  "raw-window-handle 0.5.2",
  "render",
+ "tokio",
  "utils",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
  "web-sys",
  "winit",
 ]

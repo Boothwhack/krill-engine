@@ -1,3 +1,4 @@
+use std::future::{Future};
 use async_trait::async_trait;
 use utils::{HList, hlist};
 use utils::hlist::{Concat, IntoShape};
@@ -6,7 +7,12 @@ use crate::surface::SurfaceResource;
 use crate::wgpu_render::{setup_wgpu_render_resource, WGPURenderResource};
 use crate::winit_surface::{setup_winit_resource, WinitSurface};
 
-pub trait Platform {}
+pub trait Platform {
+    fn spawn_local<F, Fut>(self, f: F)
+        where Self: Sized,
+              Fut: 'static + Future<Output=()>,
+              F: FnOnce(Self) -> Fut;
+}
 
 #[async_trait(? Send)]
 pub trait PlatformWithDefaultSetup {
@@ -16,13 +22,32 @@ pub trait PlatformWithDefaultSetup {
     async fn setup(&mut self, input: Self::SetupInput) -> Self::SetupOutput;
 }
 
-pub async fn detect_platform() -> DefaultPlatform {
+pub fn detect_platform() -> DefaultPlatform {
     DefaultPlatform {}
 }
 
 pub struct DefaultPlatform {}
 
-impl Platform for DefaultPlatform {}
+impl Platform for DefaultPlatform {
+    #[cfg(target_family = "wasm")]
+    fn spawn_local<F, Fut>(self, f: F)
+        where Self: Sized,
+              Fut: 'static + Future<Output=()>,
+              F: FnOnce(Self) -> Fut {
+        wasm_bindgen_futures::spawn_local(f(self));
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    fn spawn_local<F, Fut>(self, f: F)
+        where Self: Sized,
+              Fut: 'static + Future<Output=()>,
+              F: FnOnce(Self) -> Fut {
+        use tokio::runtime::Builder;
+
+        let runtime = Builder::new_current_thread().build().unwrap();
+        runtime.block_on(f(self));
+    }
+}
 
 #[async_trait(? Send)]
 impl PlatformWithDefaultSetup for DefaultPlatform {

@@ -9,9 +9,7 @@ use utils::{hlist, HList};
 use winit::dpi::PhysicalSize;
 use winit::event::{DeviceEvent, Event, WindowEvent};
 use winit::event_loop::EventLoop;
-use winit::platform::web::WindowExtWebSys;
 use winit::window::{Window, WindowBuilder};
-use crate::winit_surface::web::{CanvasEvent, Placement};
 
 enum EventLoopState {
     Attached(EventLoop<()>),
@@ -108,6 +106,9 @@ mod web {
 #[cfg(target_family = "wasm")]
 fn handle_canvas_on_web<R, I>(process: &mut Process<R>)
     where R: 'static + Has<SurfaceResource<WinitSurface>, I> {
+    use winit::platform::web::WindowExtWebSys;
+    use web::{CanvasEvent, Placement};
+
     let canvas = process.get().window.canvas();
 
     match process.emit_event(CanvasEvent { canvas }) {

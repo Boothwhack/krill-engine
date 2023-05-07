@@ -70,7 +70,7 @@ pub mod web {
 
     impl<R, I, U> WebRequestAssetSourceExt<R, I, U> for ProcessBuilder<R>
         where U: IntoUrl,
-              R: IntoShape<HList!(), I>,
+              R: 'static + IntoShape<HList!(), I>,
               R::Remainder: Concat {
         type Output = ProcessBuilder<<R::Remainder as Concat>::Concatenated<HList!(AssetSourceResource<WebRequestAssetSource>)>>;//ProcessBuilderWith<R, I, DirectoryAssetSourceSetupStep<P>>;
 

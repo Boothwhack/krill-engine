@@ -9,7 +9,9 @@ use utils::{hlist, HList};
 use winit::dpi::PhysicalSize;
 use winit::event::{DeviceEvent, Event, WindowEvent};
 use winit::event_loop::EventLoop;
+use winit::platform::web::WindowExtWebSys;
 use winit::window::{Window, WindowBuilder};
+use crate::winit_surface::web::{CanvasEvent, Placement};
 
 enum EventLoopState {
     Attached(EventLoop<()>),
@@ -81,12 +83,56 @@ impl<R, I> WinitSetupExt<R, I> for ProcessBuilder<R>
     }
 }
 
+#[cfg(target_family = "wasm")]
+mod web {
+    use web_sys::{HtmlCanvasElement};
+    use crate::events::Event;
+
+    pub struct CanvasEvent {
+        pub canvas: HtmlCanvasElement,
+    }
+
+    impl Event for CanvasEvent {
+        type Output = Placement;
+    }
+
+    pub enum Placement {
+        /// The canvas element will be placed into the DOM in the `<body>` tag.
+        Default(HtmlCanvasElement),
+        /// The canvas element has either been placed into the DOM by the application or does not
+        /// need to be placed.
+        DontPlace,
+    }
+}
+
+#[cfg(target_family = "wasm")]
+fn handle_canvas_on_web<R, I>(process: &mut Process<R>)
+    where R: 'static + Has<SurfaceResource<WinitSurface>, I> {
+    let canvas = process.get().window.canvas();
+
+    match process.emit_event(CanvasEvent { canvas }) {
+        Some(Placement::Default(canvas)) => {
+            web_sys::window().unwrap()
+                .document().unwrap()
+                .body().unwrap()
+                .append_child(&canvas)
+                .expect("canvas to be placed");
+        }
+        _ => {}
+    };
+}
+
+#[cfg(not(target_family = "wasm"))]
+fn handle_canvas_on_web<R>(_process: &Process<R>) {}
+
 impl RunnableSurface for WinitSurface {
     type Output = Never;
 
     fn run<R, I>(mut process: Process<R>) -> Self::Output
         where R: 'static + Has<SurfaceResource<WinitSurface>, I>
     {
+        handle_canvas_on_web(&mut process);
+
         let event_loop = process.get_mut()
             .event_loop
             .detach()

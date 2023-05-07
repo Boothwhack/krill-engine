@@ -1,10 +1,9 @@
-use crate::process::{ProcessBuilder, ProcessSetupStep};
+use crate::process::{ProcessBuilder};
 use crate::surface::SurfaceResource;
 use async_trait::async_trait;
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use render::{DeviceContext, SurfaceContext, WGPUContext};
-use std::marker::PhantomData;
-use utils::hlist::{Concat, Has, IntoShape, Prepend};
+use utils::hlist::{Concat, Has, IntoShape};
 use utils::{hlist, HList};
 
 pub struct WGPURenderResource {
@@ -39,6 +38,22 @@ pub trait WGPUCompatible {
     fn size(&self) -> (u32, u32);
 }
 
+pub async fn setup_wgpu_render_resource<S>(surface: &SurfaceResource<S>) -> WGPURenderResource
+    where S: WGPUCompatible {
+    let wgpu_context = WGPUContext::new().await.unwrap();
+    let mut surface_context = wgpu_context.create_surface(surface.raw_window());
+    let device_context = wgpu_context.request_device(&surface_context).await.unwrap();
+
+    let (width, height) = surface.size();
+    surface_context.configure(&device_context, width, height);
+
+    WGPURenderResource {
+        wgpu_context,
+        surface_context,
+        device_context
+    }
+}
+
 #[async_trait(? Send)]
 pub trait WGPURenderSetupExt<S: WGPUCompatible, I> {
     type Output;
@@ -49,8 +64,8 @@ pub trait WGPURenderSetupExt<S: WGPUCompatible, I> {
 #[async_trait(? Send)]
 impl<R, I, S> WGPURenderSetupExt<S, I> for ProcessBuilder<R>
     where
-        S: WGPUCompatible,
-        R: IntoShape<HList!(SurfaceResource<S>), I>,
+        S: 'static + WGPUCompatible,
+        R: 'static + IntoShape<HList!(SurfaceResource<S>), I>,
         R::Remainder: Concat,
 {
     type Output = ProcessBuilder<<R::Remainder as Concat>::Concatenated<HList!(WGPURenderResource, SurfaceResource<S>)>>;
@@ -59,19 +74,8 @@ impl<R, I, S> WGPURenderSetupExt<S, I> for ProcessBuilder<R>
         self.setup_async(|resources| async {
             let (surface, _): (SurfaceResource<S>, _) = resources.pick();
 
-            let wgpu_context = WGPUContext::new().await.unwrap();
-            let mut surface_context = wgpu_context.create_surface(surface.raw_window());
-            let device_context = wgpu_context.request_device(&surface_context).await.unwrap();
-
-            let (width, height) = surface.size();
-            surface_context.configure(&device_context, width, height);
-
             hlist!(
-                WGPURenderResource {
-                    wgpu_context,
-                    surface_context,
-                    device_context
-                },
+                setup_wgpu_render_resource(&surface).await,
                 surface
             )
         }).await

@@ -1,7 +1,8 @@
 use std::error::Error;
-use std::ops::{Deref, DerefMut};
-use utils::hlist::{Has, IntoShape};
-use crate::process::ProcessBuilder;
+use std::ops::{ControlFlow, Deref, DerefMut};
+use utils::hlist::{Has};
+use crate::events::Event;
+use crate::process::{Process};
 
 pub struct SurfaceResource<S> {
     surface: S,
@@ -48,36 +49,46 @@ pub enum SurfaceEvent {
     DeviceEvent(input::DeviceEvent),
 }
 
-pub enum SurfaceEventResult {
-    Continue,
-    Exit(Option<i32>),
+impl Event for SurfaceEvent {
+    type Output = ControlFlow<Exit>;
+}
+
+pub enum Exit {
+    Exit,
+    Status(i32),
     Err(Box<dyn Error>),
 }
 
-pub trait RunnableSurface<'a> {
+impl<E: 'static + Error> From<E> for Exit {
+    fn from(value: E) -> Self {
+        Exit::Err(Box::new(value))
+    }
+}
+
+impl Default for Exit {
+    fn default() -> Self {
+        Exit::Status(0)
+    }
+}
+
+/// A surface that is able to be executed and produce [SurfaceEvents](SurfaceEvent) with the
+/// resources available in the process.
+pub trait RunnableSurface {
     type Output;
 
-    fn run<F, R>(self, handler: F, resources: R) -> Self::Output
-        where R: 'a,
-              F: 'a + for<'b> FnMut(SurfaceEvent, &'b mut R) -> SurfaceEventResult;
+    fn run<R, I>(process: Process<R>) -> Self::Output
+        where Self: Sized,
+              R: 'static + Has<SurfaceResource<Self>, I>;
 }
 
-pub trait RunExt<'a, R, S: RunnableSurface<'a>, I> {
-    fn run<T, TI, F>(self, handler: F) -> S::Output
-        where R: Has<SurfaceResource<S>, I>,
-              R::Remainder: IntoShape<T, TI>,
-              T: 'a,
-              F: 'a + for<'b> FnMut(SurfaceEvent, &'b mut T) -> SurfaceEventResult;
+pub trait RunExt<R, S: RunnableSurface, I> {
+    fn run(self) -> S::Output;
 }
 
-impl<'a, R, S, I> RunExt<'a, R, S, I> for ProcessBuilder<R>
-    where S: RunnableSurface<'a>, {
-    fn run<T, TI, F>(self, handler: F) -> S::Output
-        where R: Has<SurfaceResource<S>, I>,
-              R::Remainder: IntoShape<T, TI>,
-              T: 'a,
-              F: 'a + for<'b> FnMut(SurfaceEvent, &'b mut T) -> SurfaceEventResult {
-        let (surface, resources) = self.build().pick();
-        surface.surface.run(handler, resources.into_shape().0)
+impl<R, S, I> RunExt<R, S, I> for Process<R>
+    where S: RunnableSurface,
+          R: 'static + Has<SurfaceResource<S>, I> {
+    fn run(self) -> S::Output {
+        S::run(self)
     }
 }

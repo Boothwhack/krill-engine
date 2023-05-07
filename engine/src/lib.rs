@@ -1,8 +1,10 @@
 pub mod asset_resource;
+pub mod events;
+pub mod platform;
 pub mod process;
-pub mod winit_surface;
-pub mod wgpu_render;
 pub mod surface;
+pub mod wgpu_render;
+pub mod winit_surface;
 
 pub use assets;
 pub use ecs;

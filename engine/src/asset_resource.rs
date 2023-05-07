@@ -32,7 +32,7 @@ pub mod desktop {
     use utils::{HList, hlist};
     use utils::hlist::{Concat, IntoShape};
     use crate::asset_resource::AssetSourceResource;
-    use crate::process::{ProcessBuilder, ProcessSetupStep};
+    use crate::process::{ProcessBuilder};
 
     pub trait DirectoryAssetSourceExt<R, I, P: Into<PathBuf>> {
         type Output;
@@ -42,7 +42,7 @@ pub mod desktop {
 
     impl<R, I, P> DirectoryAssetSourceExt<R, I, P> for ProcessBuilder<R>
         where P: Into<PathBuf>,
-              R: IntoShape<HList!(), I>,
+              R: 'static + IntoShape<HList!(), I>,
               R::Remainder: Concat {
         type Output = ProcessBuilder<<R::Remainder as Concat>::Concatenated<HList!(AssetSourceResource<DirectoryAssetSource>)>>;//ProcessBuilderWith<R, I, DirectoryAssetSourceSetupStep<P>>;
 

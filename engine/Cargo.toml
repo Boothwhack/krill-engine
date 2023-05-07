@@ -9,6 +9,7 @@ edition = "2021"
 assets = { path = "../assets" }
 async-trait = "0.1"
 ecs = { path = "../ecs" }
+log = "0.4"
 never-say-never = "6.6.666"
 render = { path = "../render" }
 utils = { path = "../utils" }
@@ -16,6 +17,7 @@ winit = "0.27"
 raw-window-handle = "0.5"
 
 [target.'cfg(target_family = "wasm")'.dependencies]
+console_error_panic_hook = "0.1"
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 web-sys = { version = "0.3", features = [

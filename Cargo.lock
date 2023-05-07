@@ -409,7 +409,9 @@ version = "0.1.0"
 dependencies = [
  "assets",
  "async-trait",
+ "console_error_panic_hook",
  "ecs",
+ "log",
  "never-say-never",
  "raw-window-handle 0.5.2",
  "render",
@@ -419,19 +421,6 @@ dependencies = [
  "wasm-bindgen-futures",
  "web-sys",
  "winit",
-]
-
-[[package]]
-name = "env_logger"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "85cdab6a89accf66733ad5a1693a4dcced6aeff64602b634530dd73c1f3ee9f0"
-dependencies = [
- "humantime",
- "is-terminal",
- "log",
- "regex",
- "termcolor",
 ]
 
 [[package]]
@@ -618,47 +607,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "game"
-version = "0.1.0"
-dependencies = [
- "engine",
- "float-ord",
- "futures",
- "instant",
- "log",
- "nalgebra",
- "rand",
- "winit",
-]
-
-[[package]]
-name = "game-desktop"
-version = "0.1.0"
-dependencies = [
- "engine",
- "env_logger",
- "game",
- "tokio",
-]
-
-[[package]]
-name = "game-web"
-version = "0.1.0"
-dependencies = [
- "console_error_panic_hook",
- "console_log",
- "engine",
- "game",
- "getrandom",
- "log",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
- "wgpu",
- "winit",
-]
-
-[[package]]
 name = "getrandom"
 version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -840,12 +788,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c4a1e36c821dbe04574f602848a19f742f4fb3c98d40449f11bcad18d6b17421"
 
 [[package]]
-name = "humantime"
-version = "2.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a3a5bfb195931eeb336b2a7b4d761daec841b97f947d34394601737a7bba5e4"
-
-[[package]]
 name = "hyper"
 version = "0.14.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -930,18 +872,6 @@ name = "ipnet"
 version = "2.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "12b6ee2129af8d4fb011108c73d99a1b83a85977f23b82460c0ae2e25bb4b57f"
-
-[[package]]
-name = "is-terminal"
-version = "0.4.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "adcf93614601c8129ddf72e2d5633df827ba6551541c6d8c59520a371475be1f"
-dependencies = [
- "hermit-abi 0.3.1",
- "io-lifetimes",
- "rustix",
- "windows-sys 0.48.0",
-]
 
 [[package]]
 name = "itoa"
@@ -1085,6 +1015,22 @@ dependencies = [
  "foreign-types",
  "log",
  "objc",
+]
+
+[[package]]
+name = "meteors"
+version = "0.1.0"
+dependencies = [
+ "console_log",
+ "engine",
+ "float-ord",
+ "getrandom",
+ "instant",
+ "log",
+ "nalgebra",
+ "rand",
+ "wgpu",
+ "winit",
 ]
 
 [[package]]

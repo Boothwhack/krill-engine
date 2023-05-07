@@ -19,6 +19,12 @@ pub struct Context<'a, E: Event, R> {
     _phantom_event: PhantomData<E>,
 }
 
+pub trait ContextWith<S, I>
+    where S: ToMut {
+    /// Gets a mutable reference to a subset of resources.
+    fn resources_mut(&mut self) -> S::Output<'_>;
+}
+
 impl<'a, E: Event, R> Context<'a, E, R> {
     fn new(resources: &'a mut R, iter: impl 'a + Iterator<Item=&'a mut Listener<E, R>>) -> Self {
         Context {
@@ -36,10 +42,20 @@ impl<'a, E: Event, R> Context<'a, E, R> {
     }
 
     /// Gets a mutable reference to a subset of resources.
-    pub fn res<'b, S: 'b, I>(&'b mut self) -> S::Output<'b>
+    pub fn res_mut<'b, S: 'b, I>(&'b mut self) -> S::Output<'b>
         where R: ToMut,
               S: ToMut,
               <R as ToMut>::Output<'b>: IntoShape<<S as ToMut>::Output<'b>, I> {
+        self.resources.to_mut().into_shape().0
+    }
+}
+
+impl<'a, S, E, R, I> ContextWith<S, I> for Context<'a, E, R>
+    where S: ToMut,
+          R: 'static + ToMut,
+          for<'b> <R as ToMut>::Output<'b>: IntoShape<S::Output<'b>, I>,
+          E: Event {
+    fn resources_mut(&mut self) -> S::Output<'_> {
         self.resources.to_mut().into_shape().0
     }
 }
@@ -82,7 +98,7 @@ impl<R> Default for EventBus<R> {
     }
 }
 
-impl<R:'static> EventBus<R> {
+impl<R: 'static> EventBus<R> {
     pub fn listener<E: Event>(&mut self, listener: Listener<E, R>) {
         let dispatcher = self.dispatchers.entry(TypeId::of::<E>())
             .or_insert_with(|| Box::new(EventDispatcher::<E, R>::new()));
@@ -125,7 +141,7 @@ mod tests {
         let mut resources = hlist!("string".to_owned(), 20u32);
         let mut bus: EventBus<HList!(String, u32)> = EventBus::default();
         bus.listener(|EventA(value), mut context| {
-            let delist!(_string_res, int_res) = context.res::<HList!(String, u32), _>();
+            let delist!(_string_res, int_res) = context.res_mut::<HList!(String, u32), _>();
 
             (*int_res + value) as f32
         });

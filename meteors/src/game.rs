@@ -1,27 +1,28 @@
-use engine::asset_resource::AssetSourceResource;
-use engine::assets::path::AssetPath;
-use engine::assets::source::AssetSource;
-use engine::assets::AssetPipelines;
-use engine::ecs::world::{View, World};
-use engine::render::bindgroup::serial::{BindGroupAssetPipeline, BindGroupLayoutAsset};
-use engine::render::pipeline::serial::{RenderPipelineAsset, RenderPipelineAssetPipeline};
-use engine::render::{BindGroup, BindGroupBinding, Buffer, BufferUsages, Color, DeviceContext, Handle, Pipeline, RenderPass, Target};
-use instant::Instant;
-use nalgebra::{Matrix4, RealField, Rotation3, Vector2, Vector3, Vector4};
 use std::any::TypeId;
 use std::collections::HashMap;
 use std::mem::{size_of, size_of_val};
-use std::ops::Deref;
+use std::ops::{ControlFlow, Deref};
 use std::slice::from_raw_parts;
-use std::time::Duration;
+use std::time::{Duration};
 use float_ord::FloatOrd;
-use rand::{random, Rng, SeedableRng};
+use instant::Instant;
+use nalgebra::{Matrix4, RealField, Rotation3, Vector2, Vector3, Vector4};
 use rand::distributions::Standard;
 use rand::rngs::StdRng;
-use winit::event::{DeviceEvent, ElementState, VirtualKeyCode};
-use engine::surface::{SurfaceEvent, SurfaceEventResult};
+use rand::{random, Rng, SeedableRng};
+use engine::asset_resource::AssetSourceResource;
+use engine::assets::AssetPipelines;
+use engine::assets::path::AssetPath;
+use engine::assets::source::AssetSource;
+use engine::ecs::world::{View, World};
+use engine::events::{Context, ContextWith};
+use engine::render::{BindGroup, BindGroupBinding, Buffer, BufferUsages, Color, DeviceContext, Handle, Pipeline, RenderPass, Target};
+use engine::render::bindgroup::serial::{BindGroupAssetPipeline, BindGroupLayoutAsset};
+use engine::render::pipeline::serial::{RenderPipelineAsset, RenderPipelineAssetPipeline};
+use engine::surface::{Exit, SurfaceEvent};
+use engine::surface::input::{DeviceEvent, ElementState, VirtualKeyCode};
 use engine::utils::{HList, hlist};
-use engine::utils::hlist::ToMut;
+use engine::utils::hlist::Has;
 use engine::wgpu_render::WGPURenderResource;
 
 #[derive(Debug, Default)]
@@ -178,7 +179,7 @@ fn calculate_game_bounds(width: u32, height: u32) -> Vec2 {
     }
 }
 
-pub async fn setup_game<A: AssetSource>(resources: HList!(WGPURenderResource, AssetSourceResource<A>)) -> HList!(GameResource, WGPURenderResource, AssetSourceResource<A>) {
+pub async fn setup_game_resources<A: AssetSource>(resources: HList!(WGPURenderResource, AssetSourceResource<A>)) -> HList!(GameResource, WGPURenderResource, AssetSourceResource<A>) {
     let (mut render, resources) = resources;
     let (asset_source, _) = resources;
 
@@ -302,9 +303,10 @@ pub async fn setup_game<A: AssetSource>(resources: HList!(WGPURenderResource, As
     hlist!(game, render, asset_source)
 }
 
-pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPURenderResource, GameResource, AssetSourceResource<A>)) -> SurfaceEventResult {
-    let (render, resources) = resources.to_mut();
-    let (game, _) = resources;
+pub fn on_surface_event<R, I>(event: SurfaceEvent, mut context: Context<SurfaceEvent, R>) -> ControlFlow<Exit>
+    where for<'a> Context<'a, SurfaceEvent, R>: ContextWith<HList!(GameResource, WGPURenderResource), I> {
+    let (game, resources) = context.resources_mut();
+    let (render, _) = resources;
 
     match event {
         SurfaceEvent::Resize { width, height } => {
@@ -313,7 +315,7 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
 
             game.bounds = calculate_game_bounds(width, height);
 
-            SurfaceEventResult::Continue
+            ControlFlow::Continue(())
         }
         SurfaceEvent::Draw => {
             // Update game state
@@ -629,9 +631,9 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                 render.surface().present(frame);
             }
 
-            SurfaceEventResult::Continue
+            ControlFlow::Continue(())
         }
-        SurfaceEvent::CloseRequested => SurfaceEventResult::Exit(None),
+        SurfaceEvent::CloseRequested => ControlFlow::Break(Exit::Exit),
         SurfaceEvent::DeviceEvent(DeviceEvent::Key(key)) => {
             let state = key.state == ElementState::Pressed;
             match key.virtual_keycode {
@@ -647,8 +649,8 @@ pub fn run_game<A: AssetSource>(event: SurfaceEvent, resources: &mut HList!(WGPU
                 }
                 _ => (),
             }
-            SurfaceEventResult::Continue
+            ControlFlow::Continue(())
         }
-        _ => SurfaceEventResult::Continue,
+        _ => ControlFlow::Continue(())
     }
 }

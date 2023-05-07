@@ -1,5 +1,5 @@
 [package]
-name = "game"
+name = "meteors"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,9 +8,14 @@ edition = "2021"
 [dependencies]
 engine = { path = "../engine" }
 float-ord = "0.3"
-futures = { version = "0.3", features = ["executor"] }
 instant = { version = "0.1", features = ["wasm-bindgen"] }
 log = "0.4"
 nalgebra = "0.32"
 rand = "0.8"
-winit = "0.27"
+
+[target.'cfg(target_family="wasm")'.dependencies]
+console_log = "1.0"
+getrandom = { features = ["js"] }
+wgpu = { features = ["webgl"] }
+winit = { features = ["css-size"] }
+

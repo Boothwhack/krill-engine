@@ -3,9 +3,7 @@ members = [
     "assets",
     "ecs",
     "engine",
-    "game",
-    "game-desktop",
-    "game-web",
+    "meteors",
     "render",
     "utils",
 ]

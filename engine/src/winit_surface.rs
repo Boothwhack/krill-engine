@@ -1,5 +1,6 @@
 use std::mem::swap;
 use std::ops::ControlFlow;
+use log::debug;
 use crate::process::{Process, ProcessBuilder};
 use crate::surface::{Exit, RunnableSurface, SurfaceEvent, SurfaceResource};
 use crate::wgpu_render::WGPUCompatible;
@@ -81,64 +82,19 @@ impl<R, I> WinitSetupExt<R, I> for ProcessBuilder<R>
     }
 }
 
-#[cfg(target_family = "wasm")]
-mod web {
-    use web_sys::{HtmlCanvasElement};
-    use crate::events::Event;
-
-    pub struct CanvasEvent {
-        pub canvas: HtmlCanvasElement,
-    }
-
-    impl Event for CanvasEvent {
-        type Output = Placement;
-    }
-
-    pub enum Placement {
-        /// The canvas element will be placed into the DOM in the `<body>` tag.
-        Default(HtmlCanvasElement),
-        /// The canvas element has either been placed into the DOM by the application or does not
-        /// need to be placed.
-        DontPlace,
-    }
-}
-
-#[cfg(target_family = "wasm")]
-fn handle_canvas_on_web<R, I>(process: &mut Process<R>)
-    where R: 'static + Has<SurfaceResource<WinitSurface>, I> {
-    use winit::platform::web::WindowExtWebSys;
-    use web::{CanvasEvent, Placement};
-
-    let canvas = process.get().window.canvas();
-
-    match process.emit_event(CanvasEvent { canvas }) {
-        Some(Placement::Default(canvas)) => {
-            web_sys::window().unwrap()
-                .document().unwrap()
-                .body().unwrap()
-                .append_child(&canvas)
-                .expect("canvas to be placed");
-        }
-        _ => {}
-    };
-}
-
-#[cfg(not(target_family = "wasm"))]
-fn handle_canvas_on_web<R>(_process: &Process<R>) {}
-
 impl RunnableSurface for WinitSurface {
     type Output = Never;
 
     fn run<R, I>(mut process: Process<R>) -> Self::Output
         where R: 'static + Has<SurfaceResource<WinitSurface>, I>
     {
-        handle_canvas_on_web(&mut process);
-
         let event_loop = process.get_mut()
             .event_loop
             .detach()
             .expect("this is the only place that detaches, and never returns");
         let window = process.get().window.id();
+
+        debug!(target: "surface::winit", "Starting event loop.");
 
         event_loop.run(move |event, _, control_flow| {
             let result = match event {

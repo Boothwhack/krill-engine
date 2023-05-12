@@ -12,6 +12,7 @@ ecs = { path = "../ecs" }
 log = "0.4"
 never-say-never = "6.6.666"
 render = { path = "../render" }
+thiserror = "1.0"
 utils = { path = "../utils" }
 winit = "0.27"
 raw-window-handle = "0.5"

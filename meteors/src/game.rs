@@ -1,7 +1,7 @@
 use std::any::TypeId;
 use std::collections::HashMap;
 use std::mem::{size_of, size_of_val};
-use std::ops::{ControlFlow, Deref};
+use std::ops::{Deref};
 use std::slice::from_raw_parts;
 use std::time::{Duration};
 use float_ord::FloatOrd;
@@ -19,7 +19,7 @@ use engine::events::{Context, ContextWith};
 use engine::render::{BindGroup, BindGroupBinding, Buffer, BufferUsages, Color, DeviceContext, Handle, Pipeline, RenderPass, Target};
 use engine::render::bindgroup::serial::{BindGroupAssetPipeline, BindGroupLayoutAsset};
 use engine::render::pipeline::serial::{RenderPipelineAsset, RenderPipelineAssetPipeline};
-use engine::surface::{Exit, SurfaceEvent};
+use engine::surface::{Exit, RunnableSurface, SurfaceEvent, SurfaceResource};
 use engine::surface::input::{DeviceEvent, ElementState, VirtualKeyCode};
 use engine::utils::{HList, hlist};
 use engine::utils::hlist::Has;
@@ -303,10 +303,12 @@ pub async fn setup_game_resources<A: AssetSource>(resources: HList!(WGPURenderRe
     hlist!(game, render, asset_source)
 }
 
-pub fn on_surface_event<R, I>(event: SurfaceEvent, mut context: Context<SurfaceEvent, R>) -> ControlFlow<Exit>
-    where for<'a> Context<'a, SurfaceEvent, R>: ContextWith<HList!(GameResource, WGPURenderResource), I> {
+pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<SurfaceEvent, R>) -> ()
+    where S: RunnableSurface,
+          for<'a> Context<'a, SurfaceEvent, R>: ContextWith<HList!(GameResource, WGPURenderResource, SurfaceResource<S>), I> {
     let (game, resources) = context.resources_mut();
-    let (render, _) = resources;
+    let (render, resources) = resources;
+    let (surface, _) = resources;
 
     match event {
         SurfaceEvent::Resize { width, height } => {
@@ -314,8 +316,6 @@ pub fn on_surface_event<R, I>(event: SurfaceEvent, mut context: Context<SurfaceE
             surface.configure(device, width, height);
 
             game.bounds = calculate_game_bounds(width, height);
-
-            ControlFlow::Continue(())
         }
         SurfaceEvent::Draw => {
             // Update game state
@@ -630,10 +630,8 @@ pub fn on_surface_event<R, I>(event: SurfaceEvent, mut context: Context<SurfaceE
 
                 render.surface().present(frame);
             }
-
-            ControlFlow::Continue(())
         }
-        SurfaceEvent::CloseRequested => ControlFlow::Break(Exit::Exit),
+        SurfaceEvent::CloseRequested => surface.set_exit(Exit::Exit),
         SurfaceEvent::DeviceEvent(DeviceEvent::Key(key)) => {
             let state = key.state == ElementState::Pressed;
             match key.virtual_keycode {
@@ -649,8 +647,7 @@ pub fn on_surface_event<R, I>(event: SurfaceEvent, mut context: Context<SurfaceE
                 }
                 _ => (),
             }
-            ControlFlow::Continue(())
         }
-        _ => ControlFlow::Continue(())
+        _ => {}
     }
 }

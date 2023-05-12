@@ -1,4 +1,5 @@
 use log::Level;
+use engine::events::Listeners;
 use engine::platform::{detect_platform, Platform, SetupPlatformDefaultsExt};
 use engine::process::ProcessBuilder;
 use engine::surface::RunExt;
@@ -8,6 +9,9 @@ mod game;
 fn main() {
     #[cfg(target_family = "wasm")]
     console_log::init_with_level(Level::Debug).unwrap();
+
+    #[cfg(not(target_family = "wasm"))]
+    env_logger::builder().target(env_logger::Target::Stdout).init();
 
     let mut platform = detect_platform();
 
@@ -25,7 +29,7 @@ fn main() {
             .setup_async(game::setup_game_resources).await
             .build();
 
-        process.event_bus().listener(game::on_surface_event);
+        process.event_listeners(Listeners::new().with_listener(game::on_surface_event));
 
         process.run();
     });

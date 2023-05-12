@@ -1,7 +1,7 @@
 use std::error::Error;
-use std::ops::{ControlFlow, Deref, DerefMut};
+use std::ops::{Deref, DerefMut};
 use utils::hlist::{Has};
-use crate::events::Event;
+use crate::events::EventSender;
 use crate::process::{Process};
 
 pub struct SurfaceResource<S> {
@@ -49,10 +49,6 @@ pub enum SurfaceEvent {
     DeviceEvent(input::DeviceEvent),
 }
 
-impl Event for SurfaceEvent {
-    type Output = ControlFlow<Exit>;
-}
-
 pub enum Exit {
     Exit,
     Status(i32),
@@ -76,18 +72,20 @@ impl Default for Exit {
 pub trait RunnableSurface {
     type Output;
 
-    fn run<R, I>(process: Process<R>) -> Self::Output
+    fn run<R, IS, IE>(process: Process<R>) -> Self::Output
         where Self: Sized,
-              R: 'static + Has<SurfaceResource<Self>, I>;
+              R: 'static + Has<SurfaceResource<Self>, IS> + Has<EventSender, IE>;
+
+    fn set_exit(&mut self, exit: Exit);
 }
 
-pub trait RunExt<R, S: RunnableSurface, I> {
+pub trait RunExt<R, S: RunnableSurface, IS, IE> {
     fn run(self) -> S::Output;
 }
 
-impl<R, S, I> RunExt<R, S, I> for Process<R>
+impl<R, S, IS, IE> RunExt<R, S, IS, IE> for Process<R>
     where S: RunnableSurface,
-          R: 'static + Has<SurfaceResource<S>, I> {
+          R: 'static + Has<SurfaceResource<S>, IS> + Has<EventSender, IE> {
     fn run(self) -> S::Output {
         S::run(self)
     }

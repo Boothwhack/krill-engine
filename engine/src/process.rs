@@ -1,7 +1,8 @@
 use std::future::{IntoFuture};
 use std::ops::{Deref, DerefMut};
-use utils::hlist::{Concat, IntoShape};
-use crate::events::{Event, EventBus};
+use std::sync::mpsc::SendError;
+use utils::hlist::{Concat, Has, IntoShape};
+use crate::events::{EventBus, EventSender, InvalidEvent, Listeners};
 
 pub struct ProcessInfo;
 
@@ -10,7 +11,7 @@ pub struct ProcessBuilder<R> {
 }
 
 impl ProcessBuilder<()> {
-    pub fn new() -> ProcessBuilder<()> {
+    pub fn new() -> Self {
         ProcessBuilder { resources: () }
     }
 }
@@ -39,14 +40,14 @@ impl<R: 'static> ProcessBuilder<R> {
         ProcessBuilder { resources }
     }
 
-    pub fn build(self) -> Process<R> {
+    pub fn build(self) -> Process<(EventSender, R)> {
         Process::new(self.resources)
     }
 }
 
 /// Represents the current process and holds a list of resources, produced by the [Platform], the
 /// engine and the application. These resources are passed along to all event handlers when an
-/// [Event] is emitted.
+/// event is emitted.
 pub struct Process<R> {
     resources: R,
     event_bus: EventBus<R>,
@@ -67,10 +68,12 @@ impl<R: 'static> Deref for Process<R> {
 }
 
 impl<R: 'static> Process<R> {
-    fn new(resources: R) -> Self {
+    fn new(resources: R) -> Process<(EventSender, R)> {
+        let (sender, event_bus) = EventBus::new();
+
         Process {
-            resources,
-            event_bus: EventBus::default(),
+            resources: (sender, resources),
+            event_bus,
         }
     }
 
@@ -82,12 +85,17 @@ impl<R: 'static> Process<R> {
         &mut self.resources
     }
 
-    pub fn event_bus(&mut self) -> &mut EventBus<R> {
-        &mut self.event_bus
+    pub fn dispatch_events(&mut self) -> Result<(), InvalidEvent> {
+        self.event_bus.dispatch_all(&mut self.resources)
     }
 
-    pub fn emit_event<E: Event>(&mut self, event: E) -> Option<E::Output> {
-        self.event_bus.emit(&mut self.resources, event)
+    pub fn send_event<E: 'static, I>(&self, event: E) -> Result<(), SendError<E>>
+        where R: Has<EventSender, I> {
+        self.get().send(event)
+    }
+
+    pub fn event_listeners<E: 'static>(&mut self, listeners: Listeners<E, R>) {
+        self.event_bus.register_event(listeners);
     }
 }
 
@@ -99,11 +107,11 @@ mod tests {
 
     #[test]
     fn setup() {
-        let list = ProcessBuilder::new()
+        let process = ProcessBuilder::new()
             .setup(|_| hlist!(25u32))
             .setup(|i: HList!(u32)| hlist!(*i.get(), "string".to_owned()))
             .setup(|s: HList!(String)| hlist!(0.6f32, false))
             .build();
-        assert_eq!(hlist!(25u32, 0.6f32, false), list.resources);
+        assert_eq!(hlist!(25u32, 0.6f32, false), process.resources.1);
     }
 }

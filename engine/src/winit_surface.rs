@@ -11,6 +11,7 @@ use winit::dpi::PhysicalSize;
 use winit::event::{DeviceEvent, Event, WindowEvent};
 use winit::event_loop::EventLoop;
 use winit::window::{Window, WindowBuilder};
+use crate::events::EventSender;
 
 enum EventLoopState {
     Attached(EventLoop<()>),
@@ -38,6 +39,7 @@ impl EventLoopState {
 pub struct WinitSurface {
     event_loop: EventLoopState,
     window: Window,
+    exit: Option<Exit>,
 }
 
 impl WGPUCompatible for WinitSurface {
@@ -56,7 +58,11 @@ impl WGPUCompatible for WinitSurface {
 pub fn setup_winit_resource() -> SurfaceResource<WinitSurface> {
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new().build(&event_loop).unwrap();
-    SurfaceResource::new(WinitSurface { event_loop: event_loop.into(), window })
+    SurfaceResource::new(WinitSurface {
+        event_loop: event_loop.into(),
+        window,
+        exit: None,
+    })
 }
 
 pub trait WinitSetupExt<R, I>
@@ -85,52 +91,66 @@ impl<R, I> WinitSetupExt<R, I> for ProcessBuilder<R>
 impl RunnableSurface for WinitSurface {
     type Output = Never;
 
-    fn run<R, I>(mut process: Process<R>) -> Self::Output
-        where R: 'static + Has<SurfaceResource<WinitSurface>, I>
-    {
-        let event_loop = process.get_mut()
+    fn run<R, IS, IE>(mut process: Process<R>) -> Self::Output
+        where R: 'static + Has<SurfaceResource<WinitSurface>, IS> + Has<EventSender, IE> {
+        let surface: &mut SurfaceResource<_> = process.get_mut();
+        let event_loop = surface
             .event_loop
             .detach()
             .expect("this is the only place that detaches, and never returns");
-        let window = process.get().window.id();
+        let window = surface.window.id();
 
-        debug!(target: "surface::winit", "Starting event loop.");
+        debug!(target: "krill::surface::winit", "Starting event loop.");
 
         event_loop.run(move |event, _, control_flow| {
-            let result = match event {
+            let result: Option<ControlFlow<Exit>> = match event {
                 Event::RedrawRequested(window_id) if window_id == window => {
-                    process.emit_event(SurfaceEvent::Draw)
+                    process.send_event(SurfaceEvent::Draw).unwrap();
+                    None
                 }
                 Event::RedrawEventsCleared => {
-                    process.get().window.request_redraw();
+                    process.dispatch_events().unwrap();
+
+                    let surface: &SurfaceResource<_> = process.get();
+                    surface.window.request_redraw();
+
                     None
                 }
                 Event::WindowEvent { event, window_id } if window_id == window => {
                     match event {
                         WindowEvent::Resized(PhysicalSize { width, height }) => {
-                            process.emit_event(SurfaceEvent::Resize { width, height })
+                            process.send_event(SurfaceEvent::Resize { width, height }).unwrap();
+                            None
                         }
                         WindowEvent::CloseRequested => {
-                            process.emit_event(SurfaceEvent::CloseRequested)
+                            process.send_event(SurfaceEvent::CloseRequested).unwrap();
+                            None
                         }
                         WindowEvent::KeyboardInput { input, .. } => {
-                            process.emit_event(SurfaceEvent::DeviceEvent(DeviceEvent::Key(input)))
+                            process.send_event(SurfaceEvent::DeviceEvent(DeviceEvent::Key(input))).unwrap();
+                            None
                         }
                         _ => None,
                     }
                 }
                 Event::DeviceEvent { event, .. } => {
-                    process.emit_event(SurfaceEvent::DeviceEvent(event))
+                    process.send_event(SurfaceEvent::DeviceEvent(event)).unwrap();
+                    None
                 }
                 _ => None,
             };
-            match result {
-                Some(ControlFlow::Break(Exit::Exit)) => control_flow.set_exit(),
-                Some(ControlFlow::Break(Exit::Status(code))) => control_flow.set_exit_with_code(code),
-                Some(ControlFlow::Break(Exit::Err(err))) => panic!("error in surface event handler: {}", err),
 
+            let surface: &mut SurfaceResource<_> = process.resources_mut().get_mut();
+            match surface.exit.take() {
+                Some(Exit::Exit) => control_flow.set_exit(),
+                Some(Exit::Status(code)) => control_flow.set_exit_with_code(code),
+                Some(Exit::Err(err)) => panic!("error in surface event handler: {}", err),
                 _ => {}
             };
         })
+    }
+
+    fn set_exit(&mut self, exit: Exit) {
+        self.exit = Some(exit)
     }
 }

@@ -6,6 +6,7 @@ use std::slice::from_raw_parts;
 use std::time::{Duration};
 use float_ord::FloatOrd;
 use instant::Instant;
+use log::debug;
 use nalgebra::{Matrix4, RealField, Rotation3, Vector2, Vector3, Vector4};
 use rand::distributions::Standard;
 use rand::rngs::StdRng;
@@ -67,13 +68,14 @@ struct Bullet;
 // Marker component that denotes a meteor
 struct Meteor;
 
+#[derive(Debug)]
 enum Type {
     Player,
     Bullet,
     Meteor,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 enum Shape {
     Ship,
     Meteor,
@@ -128,6 +130,7 @@ pub struct GameState {
     previous_meteor: Instant,
     time_until_meteor: Duration,
     meteor_timer: Duration,
+    score: u32,
 }
 
 impl Default for GameState {
@@ -154,6 +157,7 @@ impl Default for GameState {
             previous_meteor: Instant::now(),
             time_until_meteor: Duration::from_secs(3),
             meteor_timer: Duration::from_secs(10),
+            score: 0,
         }
     }
 }
@@ -173,7 +177,6 @@ pub struct GameResource {
     bounds: Vec2,
     restart_timer: Option<(Instant, Duration)>,
     characters: [text::Character<Sprite>; 10],
-    score: u32,
 }
 
 const SHIP_VERTICES: [Vec2; 4] = [
@@ -336,9 +339,19 @@ pub async fn setup_game_resources<A: AssetSource>(resources: HList!(WGPURenderRe
         bounds,
         restart_timer: None,
         characters,
-        score: 175,
     };
     hlist!(game, render, asset_source)
+}
+
+const MAX_METEOR_SIZE: f32 = 2.0;
+const SIZE_BIAS: f32 = 1.8;
+
+fn calculate_score(size: f32) -> u32 {
+    let size = (MAX_METEOR_SIZE - size) / SIZE_BIAS;
+    let size_multiplier = size.powf(2.0);
+    let score = 50 + (size * size_multiplier * 100.0).round() as u32;
+    debug!(target:"meteors", "Scored: {score} for hit: {size} ({size_multiplier})");
+    score
 }
 
 pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<SurfaceEvent, R>) -> ()
@@ -556,6 +569,8 @@ pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<Surfa
                                 remove.push(bullet);
                                 remove.push(meteor);
 
+                                game.state.score += calculate_score(meteor_transform.size);
+
                                 if meteor_transform.size > split_min_size {
                                     let size_distribution = (random::<f32>() * 2.0 - 1.0) * 0.2;
 
@@ -599,6 +614,8 @@ pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<Surfa
                 }
 
                 for (transform, shape, typ, collider) in create {
+                    debug!(target:"meteors", "Spawning entity: {shape:?} {transform:?} {typ:?} {collider:?}");
+
                     let entity = game.state.world.new_entity();
                     game.state.world.components_mut::<Transform>().put(entity, transform);
                     game.state.world.components_mut::<Collider>().put(entity, collider);
@@ -636,7 +653,7 @@ pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<Surfa
                 }
 
                 // score text
-                let score = game.score.to_string();
+                let score = game.state.score.to_string();
                 let score = score
                     .chars()
                     .filter_map(|c| c.to_digit(10));

@@ -5,6 +5,7 @@ use engine::process::ProcessBuilder;
 use engine::surface::RunExt;
 
 mod game;
+mod text;
 
 fn main() {
     #[cfg(target_family = "wasm")]

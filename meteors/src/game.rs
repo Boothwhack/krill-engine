@@ -24,6 +24,7 @@ use engine::surface::input::{DeviceEvent, ElementState, VirtualKeyCode};
 use engine::utils::{HList, hlist};
 use engine::utils::hlist::Has;
 use engine::wgpu_render::WGPURenderResource;
+use crate::text;
 
 #[derive(Debug, Default)]
 struct InputState {
@@ -66,11 +67,29 @@ struct Bullet;
 // Marker component that denotes a meteor
 struct Meteor;
 
-#[derive(Copy, Clone)]
+enum Type {
+    Player,
+    Bullet,
+    Meteor,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 enum Shape {
     Ship,
     Meteor,
     Bullet,
+    Char(usize),
+}
+
+impl Shape {
+    fn get_sprite<'a>(&self, game: &'a GameResource) -> &'a Sprite {
+        match self {
+            Shape::Ship => &game.ship_sprite,
+            Shape::Meteor => &game.meteor_sprite,
+            Shape::Bullet => &game.bullet_sprite,
+            Shape::Char(i) => &game.characters[*i].data,
+        }
+    }
 }
 
 struct Sprite {
@@ -153,6 +172,8 @@ pub struct GameResource {
     state: GameState,
     bounds: Vec2,
     restart_timer: Option<(Instant, Duration)>,
+    characters: [text::Character<Sprite>; 10],
+    score: u32,
 }
 
 const SHIP_VERTICES: [Vec2; 4] = [
@@ -285,6 +306,21 @@ pub async fn setup_game_resources<A: AssetSource>(resources: HList!(WGPURenderRe
         calculate_game_bounds(width, height)
     } else { Vec2::new(1.0, 1.0) };
 
+    let characters = [
+        text::character_0(),
+        text::character_1(),
+        text::character_2(),
+        text::character_3(),
+        text::character_4(),
+        text::character_5(),
+        text::character_6(),
+        text::character_7(),
+        text::character_8(),
+        text::character_9(),
+    ].map(|character|
+        character.map(|v| Sprite::new(render.device_mut(), v.as_slice()))
+    );
+
     let game = GameResource {
         pipeline,
         ship_sprite,
@@ -299,6 +335,8 @@ pub async fn setup_game_resources<A: AssetSource>(resources: HList!(WGPURenderRe
         state: GameState::default(),
         bounds,
         restart_timer: None,
+        characters,
+        score: 175,
     };
     hlist!(game, render, asset_source)
 }
@@ -375,6 +413,7 @@ pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<Surfa
                                 ..Transform::default()
                             },
                             Shape::Meteor,
+                            Type::Meteor,
                             Collider { size: 0.05 * size },
                         ));
                     }
@@ -471,6 +510,7 @@ pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<Surfa
                                         ..Default::default()
                                     },
                                     Shape::Bullet,
+                                    Type::Bullet,
                                     Collider { size: 0.01 },
                                 ));
                             }
@@ -533,6 +573,7 @@ pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<Surfa
                                             ..meteor_transform.clone()
                                         },
                                         Shape::Meteor,
+                                        Type::Meteor,
                                         Collider { size: meteor_collider.size * split_size * size_random },
                                     ));
                                     let rotation = random::<f32>() * f32::pi() * 2.0;
@@ -548,6 +589,7 @@ pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<Surfa
                                             ..meteor_transform.clone()
                                         },
                                         Shape::Meteor,
+                                        Type::Meteor,
                                         Collider { size: meteor_collider.size * split_size * size },
                                     ));
                                 }
@@ -556,15 +598,15 @@ pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<Surfa
                     }
                 }
 
-                for (transform, shape, collider) in create {
+                for (transform, shape, typ, collider) in create {
                     let entity = game.state.world.new_entity();
                     game.state.world.components_mut::<Transform>().put(entity, transform);
                     game.state.world.components_mut::<Collider>().put(entity, collider);
                     game.state.world.components_mut::<Shape>().put(entity, shape);
-                    match shape {
-                        Shape::Ship => game.state.world.components_mut::<Player>().put(entity, Player),
-                        Shape::Meteor => game.state.world.components_mut::<Meteor>().put(entity, Meteor),
-                        Shape::Bullet => game.state.world.components_mut::<Bullet>().put(entity, Bullet),
+                    match typ {
+                        Type::Player => game.state.world.components_mut::<Player>().put(entity, Player),
+                        Type::Meteor => game.state.world.components_mut::<Meteor>().put(entity, Meteor),
+                        Type::Bullet => game.state.world.components_mut::<Bullet>().put(entity, Bullet),
                     }
                 }
                 for entity in remove {
@@ -574,50 +616,80 @@ pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<Surfa
 
             // Render game
             {
+                // setup camera uniform buffer
                 let camera_scale = Vec2::new(1.0 / game.bounds.x, 1.0 / game.bounds.y);
                 let view_matrix: Matrix4<f32> = Matrix4::new_nonuniform_scaling(&Vec3::new(camera_scale.x, camera_scale.y, 1.0));
 
                 render.device().submit_buffer(game.camera_uniform_buffer, 0, data_bytes(&[view_matrix]));
 
-                let mut player_transforms = Vec::new();
-                let mut meteor_transforms = Vec::new();
-                let mut bullet_transforms = Vec::new();
+                let mut shapes_instances: HashMap<Shape, Vec<Matrix4<f32>>> = HashMap::new();
 
-                let shapes = View::builder().required::<Shape>().required::<Transform>()
+                // collect shapes from the ecs (player, meteors and bullets)
+                let shapes = View::builder()
+                    .required::<Shape>()
+                    .required::<Transform>()
                     .build(&game.state.world);
                 for (_, (shape, (transform, ()))) in shapes.iter() {
-                    match shape {
-                        Shape::Ship => player_transforms.push(transform),
-                        Shape::Meteor => meteor_transforms.push(transform),
-                        Shape::Bullet => bullet_transforms.push(transform),
-                    }
+                    shapes_instances.entry(*shape)
+                        .or_default()
+                        .push(transform.to_matrix());
                 }
 
-                let mut clear = true;
-                let render_passes = [
-                    (&game.ship_sprite, player_transforms),
-                    (&game.meteor_sprite, meteor_transforms),
-                    (&game.bullet_sprite, bullet_transforms),
-                ].into_iter().map(|(sprite, transforms)| {
-                    let instances = transforms.into_iter().map(Transform::to_matrix).collect::<Vec<_>>();
-                    let instances_data = data_bytes(&instances);
-                    render.device_mut().resize_buffer(sprite.instance_buffer, instances_data.len());
-                    render.device().submit_buffer(sprite.instance_buffer, 0, instances_data);
+                // score text
+                let score = game.score.to_string();
+                let score = score
+                    .chars()
+                    .filter_map(|c| c.to_digit(10));
+                let mut offset = 0.0;
+                const LETTER_SPACING: f32 = 0.2;
+                const SAFE_AREA: Vec2 = Vec2::new(0.05, 0.05);
+                for digit in score {
+                    let character = &game.characters[digit as usize];
+                    let char_translation = Matrix4::new_translation(&Vec3::new(
+                        offset - character.bounds.0,
+                        -1.0,
+                        0.0,
+                    ));
+                    let s = Matrix4::new_scaling(0.05);
+                    let text_translation = Matrix4::new_translation(&Vec3::new(
+                        -game.bounds.x + SAFE_AREA.x,
+                        game.bounds.y - SAFE_AREA.y,
+                        0.0,
+                    ));
 
-                    RenderPass {
-                        pipeline: game.pipeline,
-                        vertices: 0..sprite.vertices,
-                        targets: vec![Target::ScreenTarget {
-                            clear: if clear {
-                                clear = false;
-                                Some(Color::rgb(0, 3, 22, 1.0))
-                            } else { None },
-                        }],
-                        vertex_buffers: vec![Some(sprite.vertex_buffer), Some(sprite.instance_buffer)],
-                        bind_groups: vec![game.camera_bind_group.clone(), game.color_scheme_bind_group.clone()],
-                        instances: 0..instances.len() as _,
-                    }
-                }).collect::<Vec<_>>();
+                    offset += character.size() + LETTER_SPACING;
+
+                    shapes_instances.entry(Shape::Char(digit as _))
+                        .or_default()
+                        .push(text_translation * s * char_translation);
+                }
+
+                // map each sprite into separate render pass and upload the transformation matrices
+                // to the sprite's instance buffer
+                let mut clear = true;
+                let render_passes: Vec<_> = shapes_instances.into_iter()
+                    .map(|(shape, instances)| {
+                        let sprite = shape.get_sprite(game);
+                        let instances_data = data_bytes(instances.as_slice());
+
+                        render.device_mut().resize_buffer(sprite.instance_buffer, instances_data.len());
+                        render.device().submit_buffer(sprite.instance_buffer, 0, instances_data);
+
+                        RenderPass {
+                            pipeline: game.pipeline,
+                            vertices: 0..sprite.vertices,
+                            targets: vec![Target::ScreenTarget {
+                                clear: if clear {
+                                    clear = false;
+                                    Some(Color::rgb(0, 3, 22, 1.0))
+                                } else { None },
+                            }],
+                            vertex_buffers: vec![Some(sprite.vertex_buffer), Some(sprite.instance_buffer)],
+                            bind_groups: vec![game.camera_bind_group.clone(), game.color_scheme_bind_group.clone()],
+                            instances: 0..instances.len() as _,
+                        }
+                    })
+                    .collect();
 
                 let frame = render.surface().get_frame();
                 let mut encoder = render.device().command_encoder(&frame);

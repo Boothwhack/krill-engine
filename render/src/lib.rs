@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::ops::Deref;
 
 pub use wgpu::BufferUsages;
@@ -9,8 +8,6 @@ pub use render_api::{Batch, Model, RenderApi};
 pub use surface_context::SurfaceContext;
 pub use utils::Handle;
 pub use vecbuf::VecBuf;
-use crate::material::{MaterialDefinition, PipelineDefinition};
-use crate::render_api::DeviceResources;
 
 pub mod bindgroup;
 pub mod pipeline;
@@ -57,38 +54,6 @@ impl<'a, T> From<&'a mut T> for MaybeRef<'a, T> {
     fn from(value: &'a mut T) -> Self {
         MaybeRef::Ref(value)
     }
-}
-
-/// Represents a vertex format and render pipeline. Contains any temporary cache resources that are
-/// used when rendering [Geometry] with this material.
-pub struct Material {
-    pipeline: wgpu::RenderPipeline,
-    bind_groups: Vec<Handle<wgpu::BindGroupLayout>>,
-    cache: RefCell<MaterialCache>,
-}
-
-impl Material {
-    pub fn new(device: &DeviceContext, resources: &DeviceResources, surface: &SurfaceContext, definition: MaterialDefinition, pipeline: PipelineDefinition) -> Material {
-        let bind_groups = definition.uniforms.iter()
-            .map(|name| resources.uniforms.get(name).expect(&format!("uniform: {}", name)).layout)
-            .collect();
-        let pipeline = device.create_render_pipeline(resources, surface, definition, pipeline);
-        Material {
-            pipeline,
-            bind_groups,
-            cache: RefCell::new(MaterialCache {
-                vertex_buffer: device.create_buffer(0, BufferUsages::VERTEX | BufferUsages::COPY_DST),
-                index_buffer: device.create_buffer(0, BufferUsages::INDEX | BufferUsages::COPY_DST),
-                staging_buffer: vec![],
-            }),
-        }
-    }
-}
-
-pub(crate) struct MaterialCache {
-    vertex_buffer: VecBuf,
-    index_buffer: VecBuf,
-    staging_buffer: Vec<u8>,
 }
 
 pub struct Scene {}

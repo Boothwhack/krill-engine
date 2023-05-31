@@ -1,17 +1,14 @@
 use std::collections::HashMap;
 use std::iter::once;
-use std::mem::size_of;
-use std::ops::DerefMut;
 
-use bytemuck::{cast_slice, cast_slice_mut, from_bytes_mut};
-use nalgebra::{Matrix4, Point3, vector, Vector3};
+use nalgebra::Matrix4;
 use wgpu::RenderPassDescriptor;
 
 use utils::{CompactList, Handle};
 
-use crate::{BufferUsages, Color, DeviceContext, Frame, Material, MaybeRef, MutableHandle, SurfaceContext, TextureFormat};
+use crate::{BufferUsages, Color, DeviceContext, Frame, MaybeRef, MutableHandle, SurfaceContext, TextureFormat};
 use crate::geometry::{Geometry, VertexFormat};
-use crate::material::{AttributeSemantics, MaterialDefinition, PipelineDefinition, PositionTransformation, UniformDefinition};
+use crate::material::{Counter, Material, MaterialDefinition, PipelineDefinition, UniformDefinition};
 use crate::uniform::{Uniform, UniformInstance, UniformInstanceEntry};
 use crate::vecbuf::VecBuf;
 
@@ -151,79 +148,9 @@ impl<'a> Drawer<'a> {
         let material = self.resources.materials.get(batch.material)
             .unwrap();
 
-        let mut index_counter = 0;
-        let mut vertex_counter = 0;
-        {
-            let geometries: Vec<_> = batch.models.into_iter()
-                .map(|model| {
-                    (model.transform, self.resources.geometries.get(model.geometry).unwrap())
-                })
-                .collect();
+        let Counter { vertices, indices } = material.cache_models(self.context, self.resources, &batch.models);
 
-            // sum required size of vertex data and index count
-            let (indices, vertex_data_size) = geometries.iter().fold((0, 0), |(indices, vertex_data_size), (_, geometry)| {
-                (indices + geometry.indices.len(), vertex_data_size + geometry.vertex_data.len())
-            });
-
-            let mut cache = material.cache.borrow_mut();
-            let cache = cache.deref_mut();
-            let mut vertex_buffer = MutableHandle::from_ref(self.context, &mut cache.vertex_buffer);
-            let mut index_buffer = MutableHandle::from_ref(self.context, &mut cache.index_buffer);
-
-            vertex_buffer.set_capacity_at_least(vertex_data_size, false);
-            index_buffer.set_capacity_at_least(indices * size_of::<u16>(), false);
-
-
-            for (transform, geometry) in geometries {
-                let to_reserve = geometry.vertex_data.len() as isize - cache.staging_buffer.capacity() as isize;
-                if to_reserve > 0 {
-                    cache.staging_buffer.reserve(to_reserve as _);
-                }
-
-                // For now the vertex data is simply copied to the staging buffer and
-                // transformations are only applied to position attributes using the transform
-                // matrix. This will be replaced with a proper system to convert the geometry data
-                // into the vertex format the material is expecting at a later time.
-                let vertex_count = {
-                    cache.staging_buffer.extend_from_slice(&geometry.vertex_data);
-                    let vertices = cache.staging_buffer.chunks_exact_mut(geometry.vertex_format.vertex_size());
-                    let vertex_count = vertices.len();
-                    for vertex in vertices {
-                        let mut offset = 0;
-                        for attrib in geometry.vertex_format.attributes() {
-                            let size = attrib.typ.size();
-                            let attrib_data = &mut vertex[offset..offset + size];
-
-                            match attrib.semantics {
-                                AttributeSemantics::Position { transform: PositionTransformation::Model } => {
-                                    let position: &mut Point3<f32> = from_bytes_mut(attrib_data);
-                                    *position = transform.transform_point(position);
-                                }
-                                _ => {}
-                            }
-
-                            offset += size;
-                        }
-                    }
-                    vertex_count
-                };
-
-                vertex_buffer.push(cache.staging_buffer.as_slice());
-                cache.staging_buffer.clear();
-
-                cache.staging_buffer.extend_from_slice(cast_slice(&geometry.indices));
-                for index in cast_slice_mut::<_, u16>(&mut cache.staging_buffer) {
-                    *index += vertex_counter;
-                }
-                vertex_counter += vertex_count as u16;
-                index_buffer.push(cast_slice(&cache.staging_buffer));
-                cache.staging_buffer.clear();
-
-                index_counter += geometry.indices.len();
-            }
-        }
-
-        let material_cache = material.cache.borrow();
+        let material_cache = material.cache();
         let uniform_caches: Vec<_> = batch.uniforms.into_iter().map(|uniform| {
             uniform.validate_bind_group(self.context, self.resources);
             uniform.cache()
@@ -248,7 +175,7 @@ impl<'a> Drawer<'a> {
             depth_stencil_attachment: None,
         });
 
-        render_pass.set_pipeline(&material.pipeline);
+        render_pass.set_pipeline(material.pipeline());
         render_pass.set_vertex_buffer(0, material_cache.vertex_buffer.entire_slice());
         render_pass.set_index_buffer(material_cache.index_buffer.entire_slice(), wgpu::IndexFormat::Uint16);
         for (i, uniform) in uniform_caches.iter().enumerate() {
@@ -258,11 +185,11 @@ impl<'a> Drawer<'a> {
         log::trace!(
             target:"krill-render",
             "Drawing {} ({} bytes) vertices, {} ({} bytes) indices",
-            vertex_counter, material_cache.vertex_buffer.len(),
-            index_counter, material_cache.index_buffer.len(),
+            vertices, material_cache.vertex_buffer.len(),
+            indices, material_cache.index_buffer.len(),
         );
 
-        render_pass.draw_indexed(0..index_counter as _, 0, 0..1);
+        render_pass.draw_indexed(0..indices as _, 0, 0..1);
     }
 
     pub fn finish(self) {

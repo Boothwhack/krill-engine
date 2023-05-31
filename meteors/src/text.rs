@@ -129,23 +129,17 @@ pub fn character_2() -> Character<Vec<Vec2>> {
     let outer_bounds = Vec2::new(0.8, 1.0);
     let outer_radius = 0.4;
 
-    let line1 = [
-        Vec2::new(-outer_bounds.x, 1.0 - inner_radius),
-    ].into_iter()
-        .chain(rounded(Vec2::new(-inner_radius, 1.0 - inner_radius - inner_radius), inner_radius, 0.0, 90.0 + SLANT))
-        .chain([
-            Vec2::new(-outer_bounds.x, -outer_bounds.y),
-            Vec2::new(outer_bounds.x, -outer_bounds.y),
-        ]);
+    let line1 = once(Vec2::new(-0.8, 1.0))
+        .chain(rounded(Vec2::new(0.8 - outer_radius, 1.0 - outer_radius), outer_radius, 0.0, 90.0))
+        .chain(rounded(Vec2::new(0.8 - outer_radius, -0.2 + outer_radius), outer_radius, 90.0, 90.0))
+        .chain(rounded(Vec2::new(-0.2 + inner_radius, -0.2 - inner_radius), inner_radius, 0.0, -90.0))
+        .chain([Vec2::new(-0.2, -0.8), Vec2::new(0.8, -0.8)]);
 
-    let line2 = [
-        Vec2::new(-outer_bounds.x, 1.0),
-    ].into_iter()
-        .chain(rounded(Vec2::new(outer_bounds.x - outer_radius, 1.0 - outer_radius), outer_radius, 0.0, 90.0 + SLANT))
-        .chain([
-            Vec2::new(-outer_bounds.x + 1.0, -outer_bounds.y + inner_radius),
-            Vec2::new(outer_bounds.x, -outer_bounds.y + inner_radius),
-        ]);
+    let line2 = once(Vec2::new(-0.8, 1.0 - inner_radius))
+        .chain(rounded(Vec2::new(0.2 - inner_radius, 0.8 - inner_radius), inner_radius, 0.0, 90.0))
+        .chain(rounded(Vec2::new(0.2 - inner_radius, inner_radius), inner_radius, 90.0, 90.0))
+        .chain(rounded(Vec2::new(-0.8 + outer_radius, -outer_radius), outer_radius, 0.0, -90.0))
+        .chain([Vec2::new(-0.8, -1.0), Vec2::new(0.8, -1.0)]);
 
     let data = intertwine(line1, line2).collect();
 

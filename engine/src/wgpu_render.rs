@@ -1,32 +1,39 @@
-use crate::process::{ProcessBuilder};
+use std::ops::{Deref, DerefMut};
+use crate::process::ProcessBuilder;
 use crate::surface::SurfaceResource;
 use async_trait::async_trait;
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
-use render::{DeviceContext, SurfaceContext, WGPUContext};
+use render::WGPUContext;
+use render::RenderApi;
 use utils::hlist::{Concat, Has, IntoShape};
 use utils::{hlist, HList};
 
 pub struct WGPURenderResource {
     wgpu_context: WGPUContext,
-    surface_context: SurfaceContext,
-    device_context: DeviceContext,
+    render_api: RenderApi,
+}
+
+impl DerefMut for WGPURenderResource {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.render_mut()
+    }
+}
+
+impl Deref for WGPURenderResource {
+    type Target = RenderApi;
+
+    fn deref(&self) -> &Self::Target {
+        self.render()
+    }
 }
 
 impl WGPURenderResource {
-    pub fn surface(&self) -> &SurfaceContext {
-        &self.surface_context
+    pub fn render(&self) -> &RenderApi {
+        &self.render_api
     }
 
-    pub fn device(&self) -> &DeviceContext {
-        &self.device_context
-    }
-
-    pub fn device_mut(&mut self) -> &mut DeviceContext {
-        &mut self.device_context
-    }
-
-    pub fn get_mut(&mut self) -> (&mut SurfaceContext, &mut DeviceContext) {
-        (&mut self.surface_context, &mut self.device_context)
+    pub fn render_mut(&mut self) -> &mut RenderApi {
+        &mut self.render_api
     }
 }
 
@@ -49,8 +56,7 @@ pub async fn setup_wgpu_render_resource<S>(surface: &SurfaceResource<S>) -> WGPU
 
     WGPURenderResource {
         wgpu_context,
-        surface_context,
-        device_context
+        render_api: RenderApi::new(device_context, surface_context),
     }
 }
 

@@ -1,17 +1,19 @@
 use std::mem::swap;
-use std::ops::ControlFlow;
+
 use log::debug;
-use crate::process::{Process, ProcessBuilder};
-use crate::surface::{Exit, RunnableSurface, SurfaceEvent, SurfaceResource};
-use crate::wgpu_render::WGPUCompatible;
 use never_say_never::Never;
-use utils::hlist::{Concat, Has, IntoShape};
-use utils::{hlist, HList};
 use winit::dpi::PhysicalSize;
 use winit::event::{DeviceEvent, Event, WindowEvent};
 use winit::event_loop::EventLoop;
 use winit::window::{Window, WindowBuilder};
+
+use utils::{hlist, HList};
+use utils::hlist::{Concat, Has, IntoShape};
+
 use crate::events::EventSender;
+use crate::process::{Process, ProcessBuilder};
+use crate::surface::{Exit, RunnableSurface, SurfaceEvent, SurfaceResource};
+use crate::wgpu_render::WGPUCompatible;
 
 enum EventLoopState {
     Attached(EventLoop<()>),
@@ -103,41 +105,34 @@ impl RunnableSurface for WinitSurface {
         debug!(target: "krill::surface::winit", "Starting event loop.");
 
         event_loop.run(move |event, _, control_flow| {
-            let result: Option<ControlFlow<Exit>> = match event {
+            match event {
                 Event::RedrawRequested(window_id) if window_id == window => {
                     process.send_event(SurfaceEvent::Draw).unwrap();
-                    None
                 }
                 Event::RedrawEventsCleared => {
                     process.dispatch_events().unwrap();
 
                     let surface: &SurfaceResource<_> = process.get();
                     surface.window.request_redraw();
-
-                    None
                 }
                 Event::WindowEvent { event, window_id } if window_id == window => {
                     match event {
                         WindowEvent::Resized(PhysicalSize { width, height }) => {
                             process.send_event(SurfaceEvent::Resize { width, height }).unwrap();
-                            None
                         }
                         WindowEvent::CloseRequested => {
                             process.send_event(SurfaceEvent::CloseRequested).unwrap();
-                            None
                         }
                         WindowEvent::KeyboardInput { input, .. } => {
                             process.send_event(SurfaceEvent::DeviceEvent(DeviceEvent::Key(input))).unwrap();
-                            None
                         }
-                        _ => None,
+                        _ => {}
                     }
                 }
                 Event::DeviceEvent { event, .. } => {
                     process.send_event(SurfaceEvent::DeviceEvent(event)).unwrap();
-                    None
                 }
-                _ => None,
+                _ => {},
             };
 
             let surface: &mut SurfaceResource<_> = process.resources_mut().get_mut();

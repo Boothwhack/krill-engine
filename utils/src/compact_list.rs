@@ -60,6 +60,7 @@ impl<T> Entry<T> {
     }
 }
 
+#[derive(PartialOrd, PartialEq, Hash)]
 pub struct Handle<T> {
     index: usize,
     generation: u32,

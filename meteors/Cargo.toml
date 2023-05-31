@@ -6,11 +6,13 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+bytemuck = "1.13.1"
+bytemuck_derive = "1.4.1"
 engine = { path = "../engine" }
 float-ord = "0.3"
 instant = { version = "0.1", features = ["wasm-bindgen"] }
 log = "0.4"
-nalgebra = "0.32"
+nalgebra = { version = "0.32", features = ["bytemuck"] }
 rand = "0.8"
 
 [target.'cfg(target_family="wasm")'.dependencies]

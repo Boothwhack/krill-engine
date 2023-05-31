@@ -1,30 +1,34 @@
 use std::any::TypeId;
 use std::collections::HashMap;
-use std::mem::{size_of, size_of_val};
-use std::ops::{Deref};
-use std::slice::from_raw_parts;
-use std::time::{Duration};
+use std::mem::size_of;
+use std::time::Duration;
+
+use bytemuck::{bytes_of, cast_slice};
+use bytemuck_derive::{Pod, Zeroable};
 use float_ord::FloatOrd;
 use instant::Instant;
 use log::debug;
-use nalgebra::{Matrix4, RealField, Rotation3, Vector2, Vector3, Vector4};
+use nalgebra::{Matrix4, RealField, Rotation3, vector, Vector2, Vector3};
+use rand::{random, Rng, SeedableRng};
 use rand::distributions::Standard;
 use rand::rngs::StdRng;
-use rand::{random, Rng, SeedableRng};
+
 use engine::asset_resource::AssetSourceResource;
 use engine::assets::AssetPipelines;
-use engine::assets::path::AssetPath;
 use engine::assets::source::AssetSource;
 use engine::ecs::world::{View, World};
 use engine::events::{Context, ContextWith};
-use engine::render::{BindGroup, BindGroupBinding, Buffer, BufferUsages, Color, DeviceContext, Handle, Pipeline, RenderPass, Target};
+use engine::render::{Batch, BufferUsages, Color, Handle, Material, Model, VecBuf};
 use engine::render::bindgroup::serial::{BindGroupAssetPipeline, BindGroupLayoutAsset};
+use engine::render::geometry::{Geometry, VertexFormat};
+use engine::render::material::{AttributeDefinition, AttributeSemantics, AttributeType, MaterialDefinition, PipelineDefinition, Shader, UniformDefinition, UniformEntryDefinition, UniformEntryTypeDefinition, UniformVisibility};
 use engine::render::pipeline::serial::{RenderPipelineAsset, RenderPipelineAssetPipeline};
+use engine::render::uniform::{UniformInstance, UniformInstanceEntry};
 use engine::surface::{Exit, RunnableSurface, SurfaceEvent, SurfaceResource};
 use engine::surface::input::{DeviceEvent, ElementState, VirtualKeyCode};
 use engine::utils::{HList, hlist};
-use engine::utils::hlist::Has;
 use engine::wgpu_render::WGPURenderResource;
+
 use crate::text;
 
 #[derive(Debug, Default)]
@@ -39,7 +43,6 @@ struct InputState {
 
 type Vec2 = Vector2<f32>;
 type Vec3 = Vector3<f32>;
-type Vec4 = Vector4<f32>;
 
 #[derive(Clone, Debug, Default)]
 struct Transform {
@@ -55,7 +58,8 @@ impl Transform {
     pub fn to_matrix(&self) -> Matrix4<f32> {
         let translation = Matrix4::new_translation(&self.position);
         let rotation = Rotation3::from_euler_angles(0.0, 0.0, self.rotation);
-        translation * rotation.to_homogeneous() * Matrix4::new_scaling(0.1 * self.size)
+        let scale = Matrix4::new_scaling(0.1 * self.size);
+        translation * rotation.to_homogeneous() * scale
     }
 }
 
@@ -84,34 +88,13 @@ enum Shape {
 }
 
 impl Shape {
-    fn get_sprite<'a>(&self, game: &'a GameResource) -> &'a Sprite {
+    fn get_geometry(&self, game: &GameResource) -> Handle<Geometry> {
         match self {
-            Shape::Ship => &game.ship_sprite,
-            Shape::Meteor => &game.meteor_sprite,
-            Shape::Bullet => &game.bullet_sprite,
-            Shape::Char(i) => &game.characters[*i].data,
+            Shape::Ship => game.ship_geometry,
+            Shape::Meteor => game.meteor_geometry,
+            Shape::Bullet => game.bullet_geometry,
+            Shape::Char(i) => game.characters[*i].data,
         }
-    }
-}
-
-struct Sprite {
-    vertex_buffer: Handle<Buffer>,
-    instance_buffer: Handle<Buffer>,
-    vertices: u32,
-}
-
-fn data_bytes<T>(data: &[T]) -> &[u8] {
-    unsafe { from_raw_parts(data.as_ptr() as *const u8, size_of_val(data)) }
-}
-
-impl Sprite {
-    fn new(device: &mut DeviceContext, vertices: &[Vec2]) -> Self {
-        let vertex_buffer = device.create_buffer(size_of_val(vertices), BufferUsages::VERTEX | BufferUsages::COPY_DST);
-        device.submit_buffer(vertex_buffer, 0, data_bytes(vertices));
-
-        let instance_buffer = device.create_buffer(4 * 4 * size_of::<f32>(), BufferUsages::VERTEX | BufferUsages::COPY_DST);
-
-        Sprite { vertex_buffer, instance_buffer, vertices: vertices.len() as _ }
     }
 }
 
@@ -163,34 +146,49 @@ impl Default for GameState {
 }
 
 pub struct GameResource {
-    pipeline: Handle<Pipeline>,
-    ship_sprite: Sprite,
-    meteor_sprite: Sprite,
-    bullet_sprite: Sprite,
-    camera_uniform_buffer: Handle<Buffer>,
-    color_scheme_uniform_buffer: Handle<Buffer>,
-    camera_bind_group: BindGroup,
-    color_scheme_bind_group: BindGroup,
+    material: Handle<Material>,
+    ship_geometry: Handle<Geometry>,
+    meteor_geometry: Handle<Geometry>,
+    bullet_geometry: Handle<Geometry>,
+    camera_uniform: UniformInstance,
+    camera_uniform_buffer: Handle<VecBuf>,
     previous_frame: Instant,
     input_state: InputState,
     state: GameState,
     bounds: Vec2,
     restart_timer: Option<(Instant, Duration)>,
-    characters: [text::Character<Sprite>; 10],
+    characters: [text::Character<Handle<Geometry>>; 10],
 }
 
-const SHIP_VERTICES: [Vec2; 4] = [
-    Vec2::new(-0.3, -0.3),
-    Vec2::new(0.0, -0.2),
-    Vec2::new(0.0, 0.3),
-    Vec2::new(0.3, -0.3),
+#[derive(Default, Copy, Clone, Pod, Zeroable)]
+#[repr(C)]
+struct Vertex {
+    position: Vec3,
+    color: Color,
+}
+
+const DEFAULT_COLOR: Color = Color::new(0.980392157, 0.921568627, 0.843137255, 1.0);
+
+const SHIP_VERTICES: [Vertex; 4] = [
+    Vertex { position: vector![-0.3, -0.3, 0.0], color: DEFAULT_COLOR },
+    Vertex { position: vector![0.0, -0.2, 0.0], color: DEFAULT_COLOR },
+    Vertex { position: vector![0.0, 0.3, 0.0], color: DEFAULT_COLOR },
+    Vertex { position: vector![0.3, -0.3, 0.0], color: DEFAULT_COLOR },
+];
+const SHIP_INDICES: [u16; 6] = [
+    0, 1, 2,
+    1, 2, 3,
 ];
 
-const BULLET_VERTICES: [Vec2; 4] = [
-    Vec2::new(0.04, -0.08),
-    Vec2::new(0.04, 0.08),
-    Vec2::new(-0.04, -0.08),
-    Vec2::new(-0.04, 0.08),
+const BULLET_VERTICES: [Vertex; 4] = [
+    Vertex { position: Vec3::new(0.04, -0.08, 0.0), color: DEFAULT_COLOR },
+    Vertex { position: Vec3::new(0.04, 0.08, 0.0), color: DEFAULT_COLOR },
+    Vertex { position: Vec3::new(-0.04, -0.08, 0.0), color: DEFAULT_COLOR },
+    Vertex { position: Vec3::new(-0.04, 0.08, 0.0), color: DEFAULT_COLOR },
+];
+const BULLET_INDICES: [u16; 6] = [
+    0, 1, 2,
+    1, 2, 3,
 ];
 
 fn calculate_game_bounds(width: u32, height: u32) -> Vec2 {
@@ -201,6 +199,10 @@ fn calculate_game_bounds(width: u32, height: u32) -> Vec2 {
     } else {
         Vec2::new(aspect_ratio, 1.0)
     }
+}
+
+fn generate_triangle_strip_indices(vertex_count: usize) -> Vec<u16> {
+    (0u16..(vertex_count as u16) - 2).flat_map(|i| i..i + 3).collect()
 }
 
 pub async fn setup_game_resources<A: AssetSource>(resources: HList!(WGPURenderResource, AssetSourceResource<A>)) -> HList!(GameResource, WGPURenderResource, AssetSourceResource<A>) {
@@ -220,41 +222,47 @@ pub async fn setup_game_resources<A: AssetSource>(resources: HList!(WGPURenderRe
         AssetPipelines::new(pipelines)
     };
 
-    let pipeline_asset: RenderPipelineAsset = asset_pipelines
-        .load_asset(AssetPath::new("/game.pipeline").unwrap(), asset_source.deref())
-        .await
-        .expect("game render pipeline");
-    let camera_bind_group_asset: BindGroupLayoutAsset = asset_pipelines
-        .load_asset(AssetPath::new("/camera.bindgroup").unwrap(), asset_source.deref())
-        .await
-        .expect("camera bind group layout");
-    let color_scheme_bind_group_asset: BindGroupLayoutAsset = asset_pipelines
-        .load_asset(AssetPath::new("/color-scheme.bindgroup").unwrap(), asset_source.deref())
-        .await
-        .expect("color scheme bind group layout");
+    let surface_format = render.surface_format();
 
-    let surface_format = render.surface().format();
-
-    let mut bind_group_layouts = HashMap::new();
-    let camera_bind_group_layout = render
-        .device_mut()
-        .create_bind_group_layout_from_asset(camera_bind_group_asset);
-    bind_group_layouts.insert("camera".to_owned(), camera_bind_group_layout);
-    let color_scheme_bind_group_layout = render
-        .device_mut()
-        .create_bind_group_layout_from_asset(color_scheme_bind_group_asset);
-    bind_group_layouts.insert("color-scheme".to_owned(), color_scheme_bind_group_layout);
-
-    let pipeline = render.device_mut().create_pipeline_from_asset(
-        pipeline_asset,
-        surface_format,
-        bind_group_layouts,
+    render.register_uniform("camera", UniformDefinition {
+        entries: vec![UniformEntryDefinition {
+            visibility: UniformVisibility::Vertex,
+            typ: UniformEntryTypeDefinition::Buffer,
+        }],
+    });
+    let material = render.new_material(
+        MaterialDefinition {
+            attributes: vec![
+                AttributeDefinition {
+                    name: None,
+                    semantics: AttributeSemantics::Position { transform: Default::default() },
+                    typ: AttributeType::Float32(3),
+                },
+                AttributeDefinition {
+                    name: None,
+                    semantics: AttributeSemantics::Color,
+                    typ: AttributeType::Float32(4),
+                },
+            ],
+            uniforms: vec!["camera".to_owned()],
+        },
+        PipelineDefinition {
+            shader_modules: vec![include_str!("assets/game.wgsl").to_owned()],
+            vertex_shader: Shader { index: 0, entrypoint: "vs_main".to_owned() },
+            fragment_shader: Shader { index: 0, entrypoint: "fs_main".to_owned() },
+            attribute_locations: {
+                let mut attributes = HashMap::new();
+                attributes.insert("position".to_owned(), 0);
+                attributes.insert("color".to_owned(), 1);
+                attributes
+            },
+        },
     );
 
-    // generate meteor shapes
+    // generate meteor geometry
     let meteor_vertices = {
         let radius = 0.5;
-        let mut vertices: [Vec2; 10] = Default::default();
+        let mut vertices: [Vertex; 10] = Default::default();
 
         let mut indices = vec![0];
         for i in 1..=vertices.len() / 2 {
@@ -271,41 +279,51 @@ pub async fn setup_game_resources<A: AssetSource>(resources: HList!(WGPURenderRe
             let random_x = rng.next().unwrap() * 0.09;
             let random_y = rng.next().unwrap() * 0.08;
 
-            *vertex = Vec2::new(
-                progress.sin() * radius + random_x,
-                progress.cos() * radius + random_y,
-            );
+            *vertex = Vertex {
+                position: Vec3::new(
+                    progress.sin() * radius + random_x,
+                    progress.cos() * radius + random_y,
+                    0.0,
+                ),
+                color: DEFAULT_COLOR,
+            };
         }
 
         vertices
     };
 
-    let ship_sprite = Sprite::new(render.device_mut(), &SHIP_VERTICES);
-    let meteor_sprite = Sprite::new(render.device_mut(), &meteor_vertices);
-    let bullet_sprite = Sprite::new(render.device_mut(), &BULLET_VERTICES);
+    let vertex_format = VertexFormat::from(vec![
+        AttributeDefinition {
+            name: Some("position".to_owned()),
+            semantics: AttributeSemantics::Position { transform: Default::default() },
+            typ: AttributeType::Float32(3),
+        },
+        AttributeDefinition {
+            name: Some("color".to_owned()),
+            semantics: AttributeSemantics::Color,
+            typ: AttributeType::Float32(4),
+        },
+    ]);
+    let ship_geometry = render.new_geometry(
+        cast_slice(&SHIP_VERTICES).to_vec(),
+        vertex_format.clone(),
+        SHIP_INDICES.to_vec(),
+    );
+    let meteor_geometry = render.new_geometry(
+        cast_slice(&meteor_vertices).to_vec(),
+        vertex_format.clone(),
+        generate_triangle_strip_indices(meteor_vertices.len()),
+    );
+    let bullet_geometry = render.new_geometry(
+        cast_slice(&BULLET_VERTICES).to_vec(),
+        vertex_format.clone(),
+        BULLET_INDICES.to_vec(),
+    );
 
-    let camera_uniform_buffer = render.device_mut().create_buffer(
-        4 * 4 * size_of::<f32>(),
-        BufferUsages::UNIFORM | BufferUsages::COPY_DST,
-    );
-    let camera_uniform_buffer_ref = render.device().get_buffer(camera_uniform_buffer).unwrap();
-    let camera_bind_group = render.device().create_bind_group(
-        camera_bind_group_layout,
-        &[BindGroupBinding::Buffer(camera_uniform_buffer_ref)],
-    );
+    let camera_uniform_buffer = render.new_buffer(size_of::<Matrix4<f32>>(), BufferUsages::UNIFORM | BufferUsages::COPY_DST);
+    let camera_uniform = render.instantiate_uniform("camera", vec![Some(UniformInstanceEntry::Buffer(camera_uniform_buffer.into()))]);
 
-    let color_scheme_uniform_buffer = render.device_mut().create_buffer(
-        4 * size_of::<f32>(),
-        BufferUsages::UNIFORM | BufferUsages::COPY_DST,
-    );
-    render.device().submit_buffer(color_scheme_uniform_buffer, 0, data_bytes(&[Color::rgb(250, 235, 215, 1.0)]));
-    let color_scheme_uniform_buffer_ref = render.device().get_buffer(color_scheme_uniform_buffer).unwrap();
-    let color_scheme_bind_group = render.device().create_bind_group(
-        color_scheme_bind_group_layout,
-        &[BindGroupBinding::Buffer(color_scheme_uniform_buffer_ref)],
-    );
-
-    let bounds = if let Some((width, height)) = render.surface().size() {
+    let bounds = if let Some((width, height)) = render.surface_size() {
         calculate_game_bounds(width, height)
     } else { Vec2::new(1.0, 1.0) };
 
@@ -321,18 +339,25 @@ pub async fn setup_game_resources<A: AssetSource>(resources: HList!(WGPURenderRe
         text::character_8(),
         text::character_9(),
     ].map(|character|
-        character.map(|v| Sprite::new(render.device_mut(), v.as_slice()))
+        character.map(|vertices| {
+            let vertices: Vec<_> = vertices.into_iter().map(|v| {
+                Vertex { position: vector![v.x, v.y, 0.0], color: DEFAULT_COLOR }
+            }).collect();
+            render.new_geometry(
+                cast_slice(&vertices).to_vec(),
+                vertex_format.clone(),
+                generate_triangle_strip_indices(vertices.len()),
+            )
+        })
     );
 
     let game = GameResource {
-        pipeline,
-        ship_sprite,
-        meteor_sprite,
-        bullet_sprite,
+        material,
+        ship_geometry,
+        meteor_geometry,
+        bullet_geometry,
+        camera_uniform,
         camera_uniform_buffer,
-        color_scheme_uniform_buffer,
-        camera_bind_group,
-        color_scheme_bind_group,
         previous_frame: Instant::now(),
         input_state: InputState::default(),
         state: GameState::default(),
@@ -363,9 +388,7 @@ pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<Surfa
 
     match event {
         SurfaceEvent::Resize { width, height } => {
-            let (surface, device) = render.get_mut();
-            surface.configure(device, width, height);
-
+            render.configure_surface(width, height);
             game.bounds = calculate_game_bounds(width, height);
         }
         SurfaceEvent::Draw => {
@@ -637,7 +660,9 @@ pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<Surfa
                 let camera_scale = Vec2::new(1.0 / game.bounds.x, 1.0 / game.bounds.y);
                 let view_matrix: Matrix4<f32> = Matrix4::new_nonuniform_scaling(&Vec3::new(camera_scale.x, camera_scale.y, 1.0));
 
-                render.device().submit_buffer(game.camera_uniform_buffer, 0, data_bytes(&[view_matrix]));
+                render.get_buffer(game.camera_uniform_buffer)
+                    .unwrap()
+                    .upload(0, bytes_of(&view_matrix));
 
                 let mut shapes_instances: HashMap<Shape, Vec<Matrix4<f32>>> = HashMap::new();
 
@@ -681,43 +706,26 @@ pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<Surfa
                         .push(text_translation * s * char_translation);
                 }
 
-                // map each sprite into separate render pass and upload the transformation matrices
-                // to the sprite's instance buffer
-                let mut clear = true;
-                let render_passes: Vec<_> = shapes_instances.into_iter()
-                    .map(|(shape, instances)| {
-                        let sprite = shape.get_sprite(game);
-                        let instances_data = data_bytes(instances.as_slice());
+                let frame = render.request_frame();
 
-                        render.device_mut().resize_buffer(sprite.instance_buffer, instances_data.len());
-                        render.device().submit_buffer(sprite.instance_buffer, 0, instances_data);
+                let mut drawer = render.new_drawer(&frame);
 
-                        RenderPass {
-                            pipeline: game.pipeline,
-                            vertices: 0..sprite.vertices,
-                            targets: vec![Target::ScreenTarget {
-                                clear: if clear {
-                                    clear = false;
-                                    Some(Color::rgb(0, 3, 22, 1.0))
-                                } else { None },
-                            }],
-                            vertex_buffers: vec![Some(sprite.vertex_buffer), Some(sprite.instance_buffer)],
-                            bind_groups: vec![game.camera_bind_group.clone(), game.color_scheme_bind_group.clone()],
-                            instances: 0..instances.len() as _,
-                        }
-                    })
-                    .collect();
-
-                let frame = render.surface().get_frame();
-                let mut encoder = render.device().command_encoder(&frame);
-
-                for render_pass in render_passes {
-                    encoder.render_pass(render_pass);
+                let mut batch = Batch::new(game.material, vec![&game.camera_uniform]);
+                batch.clear(Color::rgb(0, 3, 22, 1.0));
+                for (shape, transforms) in shapes_instances {
+                    let geometry = shape.get_geometry(game);
+                    for transform in transforms {
+                        batch.model(Model {
+                            geometry,
+                            transform,
+                        });
+                    }
                 }
 
-                render.device().submit_commands(encoder);
+                drawer.submit_batch(batch);
+                drawer.finish();
 
-                render.surface().present(frame);
+                render.present_frame(frame);
             }
         }
         SurfaceEvent::CloseRequested => surface.set_exit(Exit::Exit),

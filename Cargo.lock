@@ -224,6 +224,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "17febce684fd15d89027105661fec94afb475cb995fbc59d2865198446ba2eea"
 
 [[package]]
+name = "bytemuck_derive"
+version = "1.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fdde5c9cd29ebd706ce1b35600920a33550e402fc998a2e53ad3b42c3c47a192"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.15",
+]
+
+[[package]]
 name = "byteorder"
 version = "1.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1053,6 +1064,8 @@ dependencies = [
 name = "meteors"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
+ "bytemuck_derive",
  "console_log",
  "engine",
  "env_logger",
@@ -1136,6 +1149,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d68d47bba83f9e2006d117a9a33af1524e655516b8919caac694427a6fb1e511"
 dependencies = [
  "approx",
+ "bytemuck",
  "matrixmultiply",
  "nalgebra-macros",
  "num-complex",
@@ -1631,8 +1645,11 @@ version = "0.1.0"
 dependencies = [
  "assets",
  "async-trait",
+ "bytemuck",
+ "bytemuck_derive",
  "futures",
  "log",
+ "nalgebra",
  "raw-window-handle 0.5.2",
  "serde",
  "thiserror",

@@ -280,8 +280,10 @@ impl Material {
                 cache.staging_buffer.clear();
 
                 cache.staging_buffer.extend_from_slice(cast_slice(&geometry.indices));
-                for index in cast_slice_mut::<_, u16>(&mut cache.staging_buffer) {
-                    *index += vertex_counter;
+                if !cache.staging_buffer.is_empty() {
+                    for index in cast_slice_mut::<_, u16>(&mut cache.staging_buffer) {
+                        *index += vertex_counter;
+                    }
                 }
                 vertex_counter += vertex_count as u16;
                 index_buffer.push(cast_slice(&cache.staging_buffer));

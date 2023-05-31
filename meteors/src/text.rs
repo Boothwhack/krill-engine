@@ -1,4 +1,5 @@
 use std::iter::once;
+
 use nalgebra::Vector2;
 
 type Vec2 = Vector2<f32>;
@@ -74,7 +75,38 @@ fn rounded(center: Vec2, radius: f32, start: f32, degrees: f32) -> impl Iterator
         .map(move |p| p * radius + center)
 }
 
-pub fn character_0() -> Character<Vec<Vec2>> {
+pub enum Topology {
+    Triangles,
+    TriangleStrip,
+}
+
+pub fn character_space() -> Character<(Topology, Vec<Vec2>)> {
+    Character { data: (Topology::Triangles, vec![]), bounds: (0.0, 0.5) }
+}
+
+pub fn character_exclamation() -> Character<(Topology, Vec<Vec2>)> {
+    let data = vec![
+        Vec2::new(0.0, 1.0),
+        Vec2::new(0.6, 1.0),
+        Vec2::new(0.0, -0.2),
+        Vec2::new(0.0, -0.2),
+        Vec2::new(0.6, 1.0),
+        Vec2::new(0.6, -0.2),
+        Vec2::new(0.0, -0.4),
+        Vec2::new(0.6, -0.4),
+        Vec2::new(0.0, -1.0),
+        Vec2::new(0.0, -1.0),
+        Vec2::new(0.6, -0.4),
+        Vec2::new(0.6, -1.0),
+    ];
+
+    Character {
+        data: (Topology::Triangles, data),
+        bounds: (0.0, 0.6),
+    }
+}
+
+pub fn character_0() -> Character<(Topology, Vec<Vec2>)> {
     let inner_bounds = Vec2::new(0.2, 0.8);
     let inner_radius = 0.2;
 
@@ -97,14 +129,14 @@ pub fn character_0() -> Character<Vec<Vec2>> {
     data.push(data[0]);
     data.push(data[1]);
     Character {
-        data,
+        data: (Topology::TriangleStrip, data),
         bounds: (-outer_bounds.x, outer_bounds.x),
     }
 }
 
-pub fn character_1() -> Character<Vec<Vec2>> {
+pub fn character_1() -> Character<(Topology, Vec<Vec2>)> {
     Character {
-        data: vec![
+        data: (Topology::TriangleStrip, vec![
             Vec2::new(0.3, -1.0),
             Vec2::new(0.3, 1.0),
             Vec2::new(-0.3, -1.0),
@@ -113,7 +145,7 @@ pub fn character_1() -> Character<Vec<Vec2>> {
             Vec2::new(-0.3, 1.0),
             Vec2::new(-0.5, 0.8),
             Vec2::new(-0.5, 1.0),
-        ],
+        ]),
         bounds: (-0.5, 0.3),
     }
 }
@@ -123,7 +155,7 @@ const SLANT: f32 = 25.0;
 const THIN_WIDTH: f32 = 0.2;
 const WIDE_WIDTH: f32 = 0.6;
 
-pub fn character_2() -> Character<Vec<Vec2>> {
+pub fn character_2() -> Character<(Topology, Vec<Vec2>)> {
     let inner_radius = THIN_WIDTH;
 
     let outer_bounds = Vec2::new(0.8, 1.0);
@@ -144,12 +176,12 @@ pub fn character_2() -> Character<Vec<Vec2>> {
     let data = intertwine(line1, line2).collect();
 
     Character {
-        data,
+        data: (Topology::TriangleStrip, data),
         bounds: (-outer_bounds.x, outer_bounds.x),
     }
 }
 
-pub fn character_3() -> Character<Vec<Vec2>> {
+pub fn character_3() -> Character<(Topology, Vec<Vec2>)> {
     let outer_radius = 0.4;
     let left = -0.4;
 
@@ -170,12 +202,12 @@ pub fn character_3() -> Character<Vec<Vec2>> {
 
     let data = intertwine(line1, line2).collect();
     Character {
-        data,
+        data: (Topology::TriangleStrip, data),
         bounds: (left, 0.8),
     }
 }
 
-pub fn character_4() -> Character<Vec<Vec2>> {
+pub fn character_4() -> Character<(Topology, Vec<Vec2>)> {
     let thickness = 0.6;
     let data = vec![
         Vec2::new(0.2, -1.0),
@@ -190,12 +222,12 @@ pub fn character_4() -> Character<Vec<Vec2>> {
         Vec2::new(0.8, -0.7),
     ];
     Character {
-        data,
+        data: (Topology::TriangleStrip, data),
         bounds: (-0.8, 0.8),
     }
 }
 
-pub fn character_5() -> Character<Vec<Vec2>> {
+pub fn character_5() -> Character<(Topology, Vec<Vec2>)> {
     let inner_radius = 0.2;
     let outer_radius = 0.4;
 
@@ -218,12 +250,12 @@ pub fn character_5() -> Character<Vec<Vec2>> {
 
     let data = intertwine(line1, line2).collect();
     Character {
-        data,
+        data: (Topology::TriangleStrip, data),
         bounds: (-0.8, 0.8),
     }
 }
 
-pub fn character_6() -> Character<Vec<Vec2>> {
+pub fn character_6() -> Character<(Topology, Vec<Vec2>)> {
     let inner_radius = 0.2;
     let outer_radius = 0.4;
 
@@ -242,12 +274,12 @@ pub fn character_6() -> Character<Vec<Vec2>> {
 
     let data = intertwine(line1, line2).collect();
     Character {
-        data,
+        data: (Topology::TriangleStrip, data),
         bounds: (-0.8, 0.8),
     }
 }
 
-pub fn character_7() -> Character<Vec<Vec2>> {
+pub fn character_7() -> Character<(Topology, Vec<Vec2>)> {
     let data = vec![
         Vec2::new(-0.8, 1.0),
         Vec2::new(-0.8, 0.8),
@@ -257,12 +289,12 @@ pub fn character_7() -> Character<Vec<Vec2>> {
         Vec2::new(-0.8, -1.0),
     ];
     Character {
-        data,
+        data: (Topology::TriangleStrip, data),
         bounds: (-0.8, 0.8),
     }
 }
 
-pub fn character_8() -> Character<Vec<Vec2>> {
+pub fn character_8() -> Character<(Topology, Vec<Vec2>)> {
     let inner_radius = 0.2;
     let outer_radius = 0.4;
 
@@ -287,12 +319,12 @@ pub fn character_8() -> Character<Vec<Vec2>> {
 
     let data = intertwine(line1, line2).collect();
     Character {
-        data,
+        data: (Topology::TriangleStrip, data),
         bounds: (-0.8, 0.8),
     }
 }
 
-pub fn character_9() -> Character<Vec<Vec2>> {
+pub fn character_9() -> Character<(Topology, Vec<Vec2>)> {
     let inner_radius = 0.2;
     let outer_radius = 0.4;
 
@@ -311,7 +343,39 @@ pub fn character_9() -> Character<Vec<Vec2>> {
 
     let data = intertwine(line1, line2).collect();
     Character {
-        data,
+        data: (Topology::TriangleStrip, data),
+        bounds: (-0.8, 0.8),
+    }
+}
+
+pub fn character_a() -> Character<(Topology, Vec<Vec2>)> {
+    let inner_radius = 0.2;
+    let outer_radius = 0.4;
+
+    let line1 = once(Vec2::new(-0.8, -1.0))
+        .chain(rounded(Vec2::new(-0.8 + outer_radius, 1.0 - outer_radius), outer_radius, 270.0, 90.0))
+        .chain(rounded(Vec2::new(0.8-outer_radius, 1.0-outer_radius), outer_radius, 0.0, 90.0))
+        .chain([
+            Vec2::new(0.8, 0.0),
+            Vec2::new(0.8, -0.1),
+            Vec2::new(0.8, -0.1),
+            Vec2::new(0.8, -0.2),
+            Vec2::new(0.8, -1.0),
+        ]);
+    let line2 = once(Vec2::new(-0.2, -1.0))
+        .chain(rounded(Vec2::new(-0.2 + inner_radius, 0.8 - inner_radius), inner_radius, 270.0, 90.0))
+        .chain(rounded(Vec2::new(0.2-inner_radius, 0.8-inner_radius), inner_radius, 0.0, 90.0))
+        .chain([
+            Vec2::new(0.2, 0.0),
+            Vec2::new(-0.2, 0.0),
+            Vec2::new(-0.2, -0.2),
+            Vec2::new(0.2, -0.2),
+            Vec2::new(0.2, -1.0),
+        ]);
+
+    let data = intertwine(line1, line2).collect();
+    Character {
+        data: (Topology::TriangleStrip, data),
         bounds: (-0.8, 0.8),
     }
 }

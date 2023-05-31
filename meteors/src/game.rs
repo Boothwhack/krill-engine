@@ -30,6 +30,7 @@ use engine::utils::{HList, hlist};
 use engine::wgpu_render::WGPURenderResource;
 
 use crate::text;
+use crate::text::{Character, Topology};
 
 #[derive(Debug, Default)]
 struct InputState {
@@ -93,7 +94,7 @@ impl Shape {
             Shape::Ship => game.ship_geometry,
             Shape::Meteor => game.meteor_geometry,
             Shape::Bullet => game.bullet_geometry,
-            Shape::Char(i) => game.characters[*i].data,
+            Shape::Char(i) => game.characters[*i].as_ref().unwrap().data,
         }
     }
 }
@@ -157,7 +158,7 @@ pub struct GameResource {
     state: GameState,
     bounds: Vec2,
     restart_timer: Option<(Instant, Duration)>,
-    characters: [text::Character<Handle<Geometry>>; 10],
+    characters: [Option<Character<Handle<Geometry>>>; 59],
 }
 
 #[derive(Default, Copy, Clone, Pod, Zeroable)]
@@ -202,7 +203,11 @@ fn calculate_game_bounds(width: u32, height: u32) -> Vec2 {
 }
 
 fn generate_triangle_strip_indices(vertex_count: usize) -> Vec<u16> {
-    (0u16..(vertex_count as u16) - 2).flat_map(|i| i..i + 3).collect()
+    if vertex_count > 2 {
+        (0u16..(vertex_count as u16) - 2).flat_map(|i| i..i + 3).collect()
+    } else {
+        vec![]
+    }
 }
 
 pub async fn setup_game_resources<A: AssetSource>(resources: HList!(WGPURenderResource, AssetSourceResource<A>)) -> HList!(GameResource, WGPURenderResource, AssetSourceResource<A>) {
@@ -328,27 +333,81 @@ pub async fn setup_game_resources<A: AssetSource>(resources: HList!(WGPURenderRe
     } else { Vec2::new(1.0, 1.0) };
 
     let characters = [
-        text::character_0(),
-        text::character_1(),
-        text::character_2(),
-        text::character_3(),
-        text::character_4(),
-        text::character_5(),
-        text::character_6(),
-        text::character_7(),
-        text::character_8(),
-        text::character_9(),
+        // start at ASCII char 32 (space)
+        Some(text::character_space()), // (space)
+        Some(text::character_exclamation()),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(text::character_0()),
+        Some(text::character_1()),
+        Some(text::character_2()),
+        Some(text::character_3()),
+        Some(text::character_4()),
+        Some(text::character_5()),
+        Some(text::character_6()),
+        Some(text::character_7()),
+        Some(text::character_8()),
+        Some(text::character_9()),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(text::character_a()),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
     ].map(|character|
-        character.map(|vertices| {
+        character.map(|char| char.map(|(topology, vertices)| {
             let vertices: Vec<_> = vertices.into_iter().map(|v| {
                 Vertex { position: vector![v.x, v.y, 0.0], color: DEFAULT_COLOR }
             }).collect();
+            let indices = match topology {
+                Topology::Triangles => (0..vertices.len() as u16).collect(),
+                Topology::TriangleStrip => generate_triangle_strip_indices(vertices.len()),
+            };
             render.new_geometry(
                 cast_slice(&vertices).to_vec(),
                 vertex_format.clone(),
-                generate_triangle_strip_indices(vertices.len()),
+                indices,
             )
-        })
+        }))
     );
 
     let game = GameResource {
@@ -656,6 +715,67 @@ pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<Surfa
 
             // Render game
             {
+                /*
+                new render structure:
+
+                Primitives:
+                  Material:
+                    Represents a RenderPipeline, vertex and fragment shader combo
+                    Is registered in the renderer with a unique id
+                    Has a set of vertex attributes and uniforms
+                    Each material being used results in a RenderPass being submitted
+                    Generic enough to potentially be replaced with graph
+                  Batch Formatter/Generator:
+                    Takes generic geometry input and converts into material expected format
+                    Is compiled and cached for max performance
+                  Geometry:
+                    Registered with unique id, possibly hash of contents to detect changes
+                    A list of vertices and indices
+                    Can be rendered with a material
+                    Should each vertex be in the format of the material that can render the
+                    geometry? Or cache a conversion with (GeoID, MatID) as key?
+                    Gets copied in attribute by attribute into the batch vertex buffer
+                  Canvas (surface):
+                    A texture onto which geometry is drawn
+                    Might be the application surface, or a plain texture
+                  Scene:
+                    Common uniforms available to all materials, like projection matrix
+
+
+                Drawing process:
+                  DrawEvent, DrawContext:
+                    Find everything to be drawn in the ecs and collect geometry and material handles.
+                    Send geometry to Scene
+                    Finalizes by submitting the canvas to draw to, texture or screen canvas
+                  Render system:
+                    Gets handed the geometry and material handles and uniform data
+                    Converts raw geometry data according to material specs
+                    Sets up the RenderPass and possibly surface texture
+
+
+                Material definition:
+                [[attributes]]
+                semantics = "position"
+                type = "f32x3"
+
+                [[attributes]]
+                semantics = "color"
+                type = "f32x4"
+
+                [[uniforms]]
+                name = "View matrix"
+                semantics = "projection"
+                type = "f32x4x4"
+
+
+                Geometry definition:
+                data = "data-file.bin"
+
+                [[attributes]]
+                semantics = "position"
+                type = "f32x3"
+                 */
+
                 // setup camera uniform buffer
                 let camera_scale = Vec2::new(1.0 / game.bounds.x, 1.0 / game.bounds.y);
                 let view_matrix: Matrix4<f32> = Matrix4::new_nonuniform_scaling(&Vec3::new(camera_scale.x, camera_scale.y, 1.0));
@@ -678,32 +798,43 @@ pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<Surfa
                 }
 
                 // score text
-                let score = game.state.score.to_string();
+                //let score = format!("SCORE: {}", game.state.score);
+                let score = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ";
                 let score = score
                     .chars()
-                    .filter_map(|c| c.to_digit(10));
+                    .filter(|c| c.is_ascii())
+                    .flat_map(|c| c.to_uppercase())
+                    .filter_map(|c| {
+                        let char_code = (c as i32) - 32;
+                        if (0..58).contains(&char_code) {
+                            Some(char_code)
+                        } else {
+                            None
+                        }
+                    });
                 let mut offset = 0.0;
                 const LETTER_SPACING: f32 = 0.2;
                 const SAFE_AREA: Vec2 = Vec2::new(0.05, 0.05);
-                for digit in score {
-                    let character = &game.characters[digit as usize];
-                    let char_translation = Matrix4::new_translation(&Vec3::new(
-                        offset - character.bounds.0,
-                        -1.0,
-                        0.0,
-                    ));
-                    let s = Matrix4::new_scaling(0.05);
-                    let text_translation = Matrix4::new_translation(&Vec3::new(
-                        -game.bounds.x + SAFE_AREA.x,
-                        game.bounds.y - SAFE_AREA.y,
-                        0.0,
-                    ));
+                for char in score {
+                    if let Some(character) = &game.characters[char as usize] {
+                        let char_translation = Matrix4::new_translation(&Vec3::new(
+                            offset - character.bounds.0,
+                            -1.0,
+                            0.0,
+                        ));
+                        let s = Matrix4::new_scaling(0.05);
+                        let text_translation = Matrix4::new_translation(&Vec3::new(
+                            -game.bounds.x + SAFE_AREA.x,
+                            game.bounds.y - SAFE_AREA.y,
+                            0.0,
+                        ));
 
-                    offset += character.size() + LETTER_SPACING;
+                        offset += character.size() + LETTER_SPACING;
 
-                    shapes_instances.entry(Shape::Char(digit as _))
-                        .or_default()
-                        .push(text_translation * s * char_translation);
+                        shapes_instances.entry(Shape::Char(char as _))
+                            .or_default()
+                            .push(text_translation * s * char_translation);
+                    }
                 }
 
                 let frame = render.request_frame();

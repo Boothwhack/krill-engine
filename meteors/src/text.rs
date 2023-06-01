@@ -4,8 +4,6 @@ use nalgebra::{vector, Vector2};
 
 use crate::text::gen::LineBuilder;
 
-type Vec2 = Vector2<f32>;
-
 mod gen {
     use std::iter::empty;
 
@@ -128,7 +126,7 @@ impl<T> Character<T> {
     }
 }
 
-fn intertwine(line1: impl IntoIterator<Item=Vec2>, line2: impl IntoIterator<Item=Vec2>) -> impl Iterator<Item=Vec2> {
+fn intertwine<T>(line1: impl IntoIterator<Item=T>, line2: impl IntoIterator<Item=T>) -> impl Iterator<Item=T> {
     line1.into_iter().zip(line2).flat_map(|(a, b)| once(a).chain(once(b)))
 }
 
@@ -140,11 +138,13 @@ pub enum Topology {
     TriangleStrip,
 }
 
-pub fn character_space() -> Character<(Topology, Vec<Vec2>)> {
+type StandardCharacter = Character<(Topology, Vec<Vector2<f32>>)>;
+
+pub fn character_space() -> StandardCharacter {
     Character { data: (Topology::Triangles, vec![]), bounds: (0.0, 0.5) }
 }
 
-pub fn character_exclamation() -> Character<(Topology, Vec<Vec2>)> {
+pub fn character_exclamation() -> StandardCharacter {
     let data = vec![
         vector!(0.0, 1.0),
         vector!(0.6, 1.0),
@@ -166,7 +166,7 @@ pub fn character_exclamation() -> Character<(Topology, Vec<Vec2>)> {
     }
 }
 
-pub fn character_0() -> Character<(Topology, Vec<Vec2>)> {
+pub fn character_0() -> StandardCharacter {
     let line1 = LineBuilder::new()
         .rounded(vector!(0.8 - OUTER_RADIUS, 1.0 - OUTER_RADIUS), OUTER_RADIUS, 0.0, 90.0)
         .rounded(vector!(0.8 - OUTER_RADIUS, -1.0 + OUTER_RADIUS), OUTER_RADIUS, 90.0, 90.0)
@@ -184,7 +184,7 @@ pub fn character_0() -> Character<(Topology, Vec<Vec2>)> {
     Character::new((Topology::TriangleStrip, data), (-0.8, 0.8))
 }
 
-pub fn character_1() -> Character<(Topology, Vec<Vec2>)> {
+pub fn character_1() -> StandardCharacter {
     Character::new(
         (Topology::TriangleStrip, vec![
             vector!(0.3, -1.0),
@@ -200,7 +200,7 @@ pub fn character_1() -> Character<(Topology, Vec<Vec2>)> {
     )
 }
 
-pub fn character_2() -> Character<(Topology, Vec<Vec2>)> {
+pub fn character_2() -> StandardCharacter {
     let line1 = LineBuilder::new()
         .points([vector!(-0.8, 1.0)])
         .rounded(vector!(0.8 - OUTER_RADIUS, 1.0 - OUTER_RADIUS), OUTER_RADIUS, 0.0, 90.0)
@@ -218,7 +218,7 @@ pub fn character_2() -> Character<(Topology, Vec<Vec2>)> {
     Character::new((Topology::TriangleStrip, data), (-0.8, 0.8))
 }
 
-pub fn character_3() -> Character<(Topology, Vec<Vec2>)> {
+pub fn character_3() -> StandardCharacter {
     let left = -0.4;
 
     let line1 = LineBuilder::new()
@@ -242,7 +242,7 @@ pub fn character_3() -> Character<(Topology, Vec<Vec2>)> {
     Character::new((Topology::TriangleStrip, data), (left, 0.8))
 }
 
-pub fn character_4() -> Character<(Topology, Vec<Vec2>)> {
+pub fn character_4() -> StandardCharacter {
     let thickness = 0.6;
     let data = vec![
         vector!(0.2, -1.0),
@@ -259,7 +259,7 @@ pub fn character_4() -> Character<(Topology, Vec<Vec2>)> {
     Character::new((Topology::TriangleStrip, data), (-0.8, 0.8))
 }
 
-pub fn character_5() -> Character<(Topology, Vec<Vec2>)> {
+pub fn character_5() -> StandardCharacter {
     let line1 = LineBuilder::new()
         .points([vector!(-0.8, -1.0)])
         .rounded(vector!(0.8 - OUTER_RADIUS, -1.0 + OUTER_RADIUS), OUTER_RADIUS, 180.0, -90.0)
@@ -283,7 +283,7 @@ pub fn character_5() -> Character<(Topology, Vec<Vec2>)> {
     Character::new((Topology::TriangleStrip, data), (-0.8, 0.8))
 }
 
-pub fn character_6() -> Character<(Topology, Vec<Vec2>)> {
+pub fn character_6() -> StandardCharacter {
     let line1 = LineBuilder::new()
         .points([vector!(0.8, 1.0)])
         .rounded(vector!(-0.8 + OUTER_RADIUS, 1.0 - OUTER_RADIUS), OUTER_RADIUS, 0.0, -90.0)
@@ -303,7 +303,7 @@ pub fn character_6() -> Character<(Topology, Vec<Vec2>)> {
     Character::new((Topology::TriangleStrip, data), (-0.8, 0.8))
 }
 
-pub fn character_7() -> Character<(Topology, Vec<Vec2>)> {
+pub fn character_7() -> StandardCharacter {
     let data = vec![
         vector!(-0.8, 1.0),
         vector!(-0.8, 0.8),
@@ -315,7 +315,7 @@ pub fn character_7() -> Character<(Topology, Vec<Vec2>)> {
     Character::new((Topology::TriangleStrip, data), (-0.8, 0.8))
 }
 
-pub fn character_8() -> Character<(Topology, Vec<Vec2>)> {
+pub fn character_8() -> StandardCharacter {
     let line1 = LineBuilder::new()
         .points([vector!(-0.4, 1.0)])
         .rounded(vector!(0.8 - OUTER_RADIUS, 1.0 - OUTER_RADIUS), OUTER_RADIUS, 0.0, 90.0)
@@ -341,7 +341,7 @@ pub fn character_8() -> Character<(Topology, Vec<Vec2>)> {
     Character::new((Topology::TriangleStrip, data), (-0.8, 0.8))
 }
 
-pub fn character_9() -> Character<(Topology, Vec<Vec2>)> {
+pub fn character_9() -> StandardCharacter {
     let line1 = LineBuilder::new()
         .points([vector!(-0.8, -1.0)])
         .rounded(vector!(0.8 - OUTER_RADIUS, -1.0 + OUTER_RADIUS), OUTER_RADIUS, 180.0, -90.0)
@@ -361,7 +361,7 @@ pub fn character_9() -> Character<(Topology, Vec<Vec2>)> {
     Character::new((Topology::TriangleStrip, data), (-0.8, 0.8))
 }
 
-pub fn character_a() -> Character<(Topology, Vec<Vec2>)> {
+pub fn character_a() -> StandardCharacter {
     let line1 = LineBuilder::new()
         .points([vector!(-0.8, -1.0)])
         .rounded(vector!(-0.8 + OUTER_RADIUS, 1.0 - OUTER_RADIUS), OUTER_RADIUS, 270.0, 90.0)
@@ -389,7 +389,7 @@ pub fn character_a() -> Character<(Topology, Vec<Vec2>)> {
     Character::new((Topology::TriangleStrip, data), (-0.8, 0.8))
 }
 
-pub fn character_b() -> Character<(Topology, Vec<Vec2>)> {
+pub fn character_b() -> StandardCharacter {
     let line1 = LineBuilder::new()
         .points([vector!(-0.8, 1.0)])
         .rounded(vector!(0.8 - OUTER_RADIUS, 1.0 - OUTER_RADIUS), OUTER_RADIUS, 0.0, 90.0)
@@ -417,7 +417,7 @@ pub fn character_b() -> Character<(Topology, Vec<Vec2>)> {
     Character::new((Topology::TriangleStrip, data), (-0.8, 0.8))
 }
 
-pub fn character_c() -> Character<(Topology, Vec<Vec2>)> {
+pub fn character_c() -> StandardCharacter {
     let line1 = LineBuilder::new()
         .rounded(vector!(0.8 - OUTER_RADIUS, -1.0 + OUTER_RADIUS), OUTER_RADIUS, 90.0, 90.0)
         .rounded(vector!(-0.8 + OUTER_RADIUS, -1.0 + OUTER_RADIUS), OUTER_RADIUS, 180.0, 90.0)
@@ -433,7 +433,7 @@ pub fn character_c() -> Character<(Topology, Vec<Vec2>)> {
     Character::new((Topology::TriangleStrip, data), (-0.8, 0.8))
 }
 
-pub fn character_d() -> Character<(Topology, Vec<Vec2>)> {
+pub fn character_d() -> StandardCharacter {
     let line1 = LineBuilder::new()
         .points([vector!(-0.8, 1.0)])
         .rounded(vector!(0.8 - OUTER_RADIUS, 1.0 - OUTER_RADIUS), OUTER_RADIUS, 0.0, 90.0)
@@ -453,4 +453,128 @@ pub fn character_d() -> Character<(Topology, Vec<Vec2>)> {
 
     let data = intertwine(line1, line2).collect();
     Character::new((Topology::TriangleStrip, data), (-0.8, 0.8))
+}
+
+pub fn character_e() -> StandardCharacter {
+    let right = 1.4;
+
+    let line1 = [
+        vector!(right, 1.0),
+        vector!(0.0, 1.0),
+        vector!(0.0, 0.2),
+        vector!(0.0, 0.1),
+        vector!(0.0, 0.1),
+        vector!(0.0, 0.0),
+        vector!(0.0, -1.0),
+        vector!(right, -1.0),
+    ];
+    let line2 = [
+        vector!(right, 0.8),
+        vector!(0.6, 0.8),
+        vector!(0.6, 0.2),
+        vector!(right, 0.2),
+        vector!(right, 0.0),
+        vector!(0.6, 0.0),
+        vector!(0.6, -0.8),
+        vector!(right, -0.8),
+    ];
+
+    let data = intertwine(line1, line2).collect();
+    Character::new((Topology::TriangleStrip, data), (0.0, right))
+}
+
+pub fn character_f() -> StandardCharacter {
+    let right = 1.4;
+
+    let line1 = [
+        vector!(right, 1.0),
+        vector!(0.0, 1.0),
+        vector!(0.0, 0.2),
+        vector!(0.0, 0.1),
+        vector!(0.0, 0.1),
+        vector!(0.0, 0.0),
+        vector!(0.0, -1.0),
+    ];
+    let line2 = [
+        vector!(right, 0.8),
+        vector!(0.6, 0.8),
+        vector!(0.6, 0.2),
+        vector!(right, 0.2),
+        vector!(right, 0.0),
+        vector!(0.6, 0.0),
+        vector!(0.6, -1.0),
+    ];
+
+    let data = intertwine(line1, line2).collect();
+    Character::new((Topology::TriangleStrip, data), (0.0, right))
+}
+
+pub fn character_g() -> StandardCharacter {
+    let line1 = LineBuilder::new()
+        .points([vector!(0.8, 0.2)])
+        .line(vector!(0.8, -0.6), vector!(0.8, -1.0))
+        .rounded(vector!(-0.8+OUTER_RADIUS, -1.0+OUTER_RADIUS), OUTER_RADIUS, 180.0, 90.0)
+        .rounded(vector!(-0.8+OUTER_RADIUS, 1.0-OUTER_RADIUS), OUTER_RADIUS, 270.0, 90.0)
+        .points([vector!(0.8,1.0)]);
+    let line2 = LineBuilder::new()
+        .points([vector!(0.2,0.2)])
+        .rounded(vector!(0.2-INNER_RADIUS, -0.8+INNER_RADIUS), INNER_RADIUS, 90.0, 90.0)
+        .rounded(vector!(-0.2+INNER_RADIUS, -0.8+INNER_RADIUS), INNER_RADIUS, 180.0, 90.0)
+        .rounded(vector!(-0.2+INNER_RADIUS, 0.8-INNER_RADIUS), INNER_RADIUS, 270.0, 90.0)
+        .points([vector!(0.8, 0.8)]);
+
+    let data = intertwine(line1, line2).collect();
+    Character::new((Topology::TriangleStrip, data), (-0.8, 0.8))
+}
+
+pub fn character_h() -> StandardCharacter {
+    let data = vec![
+        vector!(-0.8, 1.0),
+        vector!(-0.8, -1.0),
+        vector!(-0.2, 1.0),
+        vector!(-0.2, -1.0),
+        vector!(-0.2, 0.0),
+        vector!(-0.2, -0.2),
+        vector!(0.2, 0.0),
+        vector!(0.2, -0.2),
+        vector!(0.2, 1.0),
+        vector!(0.2, -1.0),
+        vector!(0.8, 1.0),
+        vector!(0.8, -1.0),
+    ];
+
+    Character::new((Topology::TriangleStrip, data), (-0.8, 0.8))
+}
+
+pub fn character_i() -> StandardCharacter {
+    let data = vec![
+        vector!(-0.5, 1.0),
+        vector!(0.5, 1.0),
+        vector!(-0.5, 0.8),
+        vector!(0.5, 0.8),
+        vector!(-0.3, 0.8),
+        vector!(0.3, 0.8),
+        vector!(-0.3, -0.8),
+        vector!(0.3, -0.8),
+        vector!(-0.5, -0.8),
+        vector!(0.5, -0.8),
+        vector!(-0.5, -1.0),
+        vector!(0.5, -1.0),
+    ];
+
+    Character::new((Topology::TriangleStrip, data), (-0.5, 0.5))
+}
+
+pub fn character_j() -> StandardCharacter {
+    let line1 = LineBuilder::new()
+        .points([vector!(0.6, 1.0)])
+        .rounded(vector!(0.6-OUTER_RADIUS, -1.0+OUTER_RADIUS), OUTER_RADIUS, 90.0, 90.0)
+        .points([vector!(-0.2, -1.0)]);
+    let line2 = LineBuilder::new()
+        .points([vector!(0.0,1.0)])
+        .rounded(vector!(0.0-INNER_RADIUS, -0.8+INNER_RADIUS), INNER_RADIUS, 90.0, 90.0)
+        .points([vector!(-0.2, -0.8)]);
+
+    let data = intertwine(line1,line2).collect();
+    Character::new((Topology::TriangleStrip, data), (-0.2, 0.6))
 }

@@ -431,3 +431,26 @@ pub fn character_c() -> Character<(Topology, Vec<Vec2>)> {
         bounds: (-0.8, 0.8),
     }
 }
+
+pub fn character_d() -> Character<(Topology, Vec<Vec2>)> {
+    let line1 = once(Vec2::new(-0.8, 1.0))
+        .chain(rounded(Vec2::new(0.8-OUTER_RADIUS, 1.0-OUTER_RADIUS), OUTER_RADIUS, 0.0, 90.0))
+        .chain(rounded(Vec2::new(0.8-OUTER_RADIUS, -1.0+OUTER_RADIUS), OUTER_RADIUS, 90.0, 90.0))
+        .chain([
+            Vec2::new(-0.8, -1.0),
+            Vec2::new(-0.8, 1.0),
+        ]);
+    let line2 = once(Vec2::new(-0.8, 0.8))
+        .chain(rounded(Vec2::new(0.2-INNER_RADIUS, 0.8-INNER_RADIUS), INNER_RADIUS, 0.0, 90.0))
+        .chain(rounded(Vec2::new(0.2-INNER_RADIUS, -0.8+INNER_RADIUS), INNER_RADIUS, 90.0, 90.0))
+        .chain([
+            Vec2::new(-0.2, -0.8),
+            Vec2::new(-0.2, 0.8),
+        ]);
+
+    let data = intertwine(line1,line2).collect();
+    Character {
+        data: (Topology::TriangleStrip, data),
+        bounds: (-0.8, 0.8),
+    }
+}

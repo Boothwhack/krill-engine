@@ -813,7 +813,7 @@ pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<Surfa
                         }
                     });
                 let mut offset = 0.0;
-                const LETTER_SPACING: f32 = 0.2;
+                const LETTER_SPACING: f32 = 0.3;
                 const SAFE_AREA: Vec2 = Vec2::new(0.05, 0.05);
                 for char in score {
                     if let Some(character) = &game.characters[char as usize] {

@@ -620,3 +620,21 @@ pub fn character_l() -> StandardCharacter {
     ];
     Character::new((Topology::TriangleStrip, data), (0.0, right))
 }
+
+pub fn character_m() -> StandardCharacter {
+    let data = vec![
+        vector!(-0.8, -1.0),
+        vector!(-0.2, -1.0),
+        vector!(-0.8, 1.0),
+        vector!(-0.2, 0.2),
+        vector!(-0.2, 1.0),
+        vector!(0.0, 0.0),
+        vector!(0.0, 0.8),
+        vector!(0.2, 0.2),
+        vector!(0.2, 1.0),
+        vector!(0.8, 1.0),
+        vector!(0.2, -1.0),
+        vector!(0.8, -1.0),
+    ];
+    Character::new((Topology::TriangleStrip, data), (-0.8, 0.8))
+}

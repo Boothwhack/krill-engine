@@ -659,3 +659,8 @@ pub fn character_n() -> StandardCharacter {
     ];
     Character::new((Topology::TriangleStrip, data), (-0.8, 0.8))
 }
+
+pub fn character_o() -> StandardCharacter {
+    // reuse 0
+    character_0()
+}

@@ -381,7 +381,7 @@ pub async fn setup_game_resources<A: AssetSource>(resources: HList!(WGPURenderRe
         Some(text::character_l()),
         Some(text::character_m()),
         Some(text::character_n()),
-        None,
+        Some(text::character_o()),
         None,
         None,
         None,

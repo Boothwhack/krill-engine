@@ -600,7 +600,7 @@ pub fn character_k() -> StandardCharacter {
             vector!(-0.8, 1.0),
             vector!(-0.2, -0.2),
         ])
-        .rounded(vector!(0.2 - INNER_RADIUS, -0.2 - INNER_RADIUS), INNER_RADIUS, 0.0,90.0)
+        .rounded(vector!(0.2 - INNER_RADIUS, -0.2 - INNER_RADIUS), INNER_RADIUS, 0.0, 90.0)
         .points([vector!(0.2, -1.0)]);
 
     let data = intertwine(line1, line2).collect();
@@ -622,19 +622,40 @@ pub fn character_l() -> StandardCharacter {
 }
 
 pub fn character_m() -> StandardCharacter {
+    let line_height = 0.8;
+    let line_offset = -0.2;
+
     let data = vec![
         vector!(-0.8, -1.0),
         vector!(-0.2, -1.0),
         vector!(-0.8, 1.0),
-        vector!(-0.2, 0.2),
+        vector!(-0.2, 1.0 - line_height),
         vector!(-0.2, 1.0),
-        vector!(0.0, 0.0),
-        vector!(0.0, 0.8),
-        vector!(0.2, 0.2),
+        vector!(0.0, line_offset),
+        vector!(0.0, line_offset + line_height),
+        vector!(0.2, 1.0 - line_height),
         vector!(0.2, 1.0),
         vector!(0.8, 1.0),
         vector!(0.2, -1.0),
         vector!(0.8, -1.0),
+    ];
+    Character::new((Topology::TriangleStrip, data), (-0.8, 0.8))
+}
+
+pub fn character_n() -> StandardCharacter {
+    let line_height = -0.1;
+
+    let data = vec![
+        vector!(-0.8, -1.0),
+        vector!(-0.2, -1.0),
+        vector!(-0.8, 1.0),
+        vector!(-0.2, line_height),
+        vector!(-0.2, 1.0),
+        vector!(0.2, -1.0),
+        vector!(0.2, -line_height),
+        vector!(0.8, -1.0),
+        vector!(0.2, 1.0),
+        vector!(0.8, 1.0),
     ];
     Character::new((Topology::TriangleStrip, data), (-0.8, 0.8))
 }

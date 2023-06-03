@@ -377,7 +377,7 @@ pub async fn setup_game_resources<A: AssetSource>(resources: HList!(WGPURenderRe
         Some(text::character_h()),
         Some(text::character_i()),
         Some(text::character_j()),
-        None,
+        Some(text::character_k()),
         None,
         None,
         None,
@@ -812,7 +812,7 @@ pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<Surfa
                             None
                         }
                     });
-                let mut offset = 0.0;
+                let mut offset = -10.0;
                 const LETTER_SPACING: f32 = 0.3;
                 const SAFE_AREA: Vec2 = Vec2::new(0.05, 0.05);
                 for char in score {

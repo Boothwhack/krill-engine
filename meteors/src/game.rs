@@ -391,7 +391,7 @@ pub async fn setup_game_resources<A: AssetSource>(resources: HList!(WGPURenderRe
         Some(text::character_v()),
         Some(text::character_w()),
         Some(text::character_x()),
-        None,
+        Some(text::character_y()),
         None,
     ].map(|character|
         character.map(|char| char.map(|(topology, vertices)| {

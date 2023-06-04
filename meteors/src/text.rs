@@ -852,3 +852,31 @@ pub fn character_x() -> StandardCharacter {
     ];
     Character::new((Topology::Triangles, data), (0.0, width))
 }
+
+pub fn character_y() -> StandardCharacter {
+    let middle = -0.2;
+
+    let data = vec![
+        vector!(-0.8, 1.0),
+        vector!(-0.2, 1.0),
+        vector!(-0.3, middle),
+        vector!(-0.2, 1.0),
+        vector!(-0.3, middle),
+        vector!(0.3, middle),
+
+        vector!(0.2, 1.0),
+        vector!(0.8, 1.0),
+        vector!(-0.3, middle),
+        vector!(0.8, 1.0),
+        vector!(-0.3, middle),
+        vector!(0.3, middle),
+
+        vector!(-0.3, middle),
+        vector!(0.3, middle),
+        vector!(-0.3, -1.0),
+        vector!(0.3, middle),
+        vector!(-0.3, -1.0),
+        vector!(0.3, -1.0),
+    ];
+    Character::new((Topology::Triangles, data), (-0.8, 0.8))
+}

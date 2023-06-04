@@ -842,7 +842,6 @@ pub fn character_x() -> StandardCharacter {
         vector!(weight, 1.0),
         vector!(width - weight, -1.0),
         vector!(width, -1.0),
-
         vector!(width - weight, 1.0),
         vector!(width, 1.0),
         vector!(0.0, -1.0),
@@ -863,14 +862,12 @@ pub fn character_y() -> StandardCharacter {
         vector!(-0.2, 1.0),
         vector!(-0.3, middle),
         vector!(0.3, middle),
-
         vector!(0.2, 1.0),
         vector!(0.8, 1.0),
         vector!(-0.3, middle),
         vector!(0.8, 1.0),
         vector!(-0.3, middle),
         vector!(0.3, middle),
-
         vector!(-0.3, middle),
         vector!(0.3, middle),
         vector!(-0.3, -1.0),
@@ -879,4 +876,28 @@ pub fn character_y() -> StandardCharacter {
         vector!(0.3, -1.0),
     ];
     Character::new((Topology::Triangles, data), (-0.8, 0.8))
+}
+
+pub fn character_z() -> StandardCharacter {
+    let width = 0.7;
+
+    let line1 = [
+        vector!(-0.8, 1.0),
+        vector!(0.8, 1.0),
+        vector!(0.8, 0.8),
+        vector!(-0.8 + width, -0.8),
+        vector!(-0.8 + width, -0.8),
+        vector!(0.8, -0.8),
+    ];
+    let line2 = [
+        vector!(-0.8, 0.8),
+        vector!(0.8 - width, 0.8),
+        vector!(0.8 - width, 0.8),
+        vector!(-0.8, -0.8),
+        vector!(-0.8, -1.0),
+        vector!(0.8, -1.0),
+    ];
+
+    let data = intertwine(line1, line2).collect();
+    Character::new((Topology::TriangleStrip, data), (-0.8, 0.8))
 }

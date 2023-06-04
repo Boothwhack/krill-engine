@@ -158,7 +158,7 @@ pub struct GameResource {
     state: GameState,
     bounds: Vec2,
     restart_timer: Option<(Instant, Duration)>,
-    characters: [Option<Character<Handle<Geometry>>>; 59],
+    characters: [Option<Character<Handle<Geometry>>>; 58],
 }
 
 #[derive(Default, Copy, Clone, Pod, Zeroable)]
@@ -349,7 +349,6 @@ pub async fn setup_game_resources<A: AssetSource>(resources: HList!(WGPURenderRe
         None,
         None,
         None,
-        None,
         Some(text::character_0()),
         Some(text::character_1()),
         Some(text::character_2()),
@@ -392,7 +391,7 @@ pub async fn setup_game_resources<A: AssetSource>(resources: HList!(WGPURenderRe
         Some(text::character_w()),
         Some(text::character_x()),
         Some(text::character_y()),
-        None,
+        Some(text::character_z()),
     ].map(|character|
         character.map(|char| char.map(|(topology, vertices)| {
             let vertices: Vec<_> = vertices.into_iter().map(|v| {

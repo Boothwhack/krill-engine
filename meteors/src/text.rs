@@ -830,3 +830,25 @@ pub fn character_w() -> StandardCharacter {
     ];
     Character::new((Topology::TriangleStrip, data), (0.0, width))
 }
+
+pub fn character_x() -> StandardCharacter {
+    let width = 1.6;
+    let weight = 0.6;
+
+    let data = vec![
+        vector!(0.0, 1.0),
+        vector!(weight, 1.0),
+        vector!(width - weight, -1.0),
+        vector!(weight, 1.0),
+        vector!(width - weight, -1.0),
+        vector!(width, -1.0),
+
+        vector!(width - weight, 1.0),
+        vector!(width, 1.0),
+        vector!(0.0, -1.0),
+        vector!(width, 1.0),
+        vector!(0.0, -1.0),
+        vector!(weight, -1.0),
+    ];
+    Character::new((Topology::Triangles, data), (0.0, width))
+}

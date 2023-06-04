@@ -798,15 +798,35 @@ pub fn character_u() -> StandardCharacter {
 }
 
 pub fn character_v() -> StandardCharacter {
-    let width = 0.5;
+    let width = 1.4;
+    let weight = 0.5;
 
     let data = vec![
-        vector!(-0.7, 1.0),
-        vector!(-0.7 + width, 1.0),
-        vector!(-width / 2.0, -1.0),
-        vector!(width / 2.0, -1.0),
-        vector!(0.7 - width, 1.0),
-        vector!(0.7, 1.0),
+        vector!(0.0, 1.0),
+        vector!(weight, 1.0),
+        vector!((width - weight) / 2.0, -1.0),
+        vector!((width + weight) / 2.0, -1.0),
+        vector!(width - weight, 1.0),
+        vector!(width, 1.0),
     ];
-    Character::new((Topology::TriangleStrip, data), (-0.7, 0.7))
+    Character::new((Topology::TriangleStrip, data), (0.0, width))
+}
+
+pub fn character_w() -> StandardCharacter {
+    let width = 2.2;
+    let weight = 0.5;
+
+    let data = vec![
+        vector!(0.0, 1.0),
+        vector!(weight, 1.0),
+        vector!(width / 3.0 - weight / 2.0, -1.0),
+        vector!(width / 3.0 + weight / 2.0, -1.0),
+        vector!((width - weight) / 2.0, 1.0),
+        vector!((width + weight) / 2.0, 1.0),
+        vector!(width / 1.5 - weight / 2.0, -1.0),
+        vector!(width / 1.5 + weight / 2.0, -1.0),
+        vector!(width - weight, 1.0),
+        vector!(width, 1.0),
+    ];
+    Character::new((Topology::TriangleStrip, data), (0.0, width))
 }

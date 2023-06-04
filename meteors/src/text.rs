@@ -719,3 +719,29 @@ pub fn character_q() -> StandardCharacter {
     let data = intertwine(line1, line2).collect();
     Character::new((Topology::TriangleStrip, data), (-0.8, 0.8))
 }
+
+pub fn character_r() -> StandardCharacter {
+    let line1 = LineBuilder::new()
+        .points([
+            vector!(-0.8, -1.0),
+            vector!(-0.8, 1.0),
+        ])
+        .rounded(vector!(0.8-OUTER_RADIUS, 1.0-OUTER_RADIUS), OUTER_RADIUS, 0.0,90.0)
+        .rounded(vector!(0.8-OUTER_RADIUS, OUTER_RADIUS), OUTER_RADIUS, 90.0, 90.0)
+        .points([vector!(-0.2, 0.0)])
+        .rounded(vector!(0.8-OUTER_RADIUS, 0.2-OUTER_RADIUS), OUTER_RADIUS, 0.0, 90.0)
+        .points([vector!(0.8, -1.0)]);
+    let line2 = LineBuilder::new()
+        .points([
+            vector!(-0.2, -1.0),
+            vector!(-0.2, 0.8),
+        ])
+        .rounded(vector!(0.2-INNER_RADIUS, 0.8-INNER_RADIUS),INNER_RADIUS, 0.0,90.0)
+        .rounded(vector!(0.2-INNER_RADIUS, 0.2+INNER_RADIUS),INNER_RADIUS, 90.0, 90.0)
+        .points([vector!(-0.2, 0.2)])
+        .rounded(vector!(0.2-INNER_RADIUS, -INNER_RADIUS), INNER_RADIUS, 0.0, 90.0)
+        .points([vector!(0.2, -1.0)]);
+
+    let data = intertwine(line1, line2).collect();
+    Character::new((Topology::TriangleStrip, data), (-0.8, 0.8))
+}

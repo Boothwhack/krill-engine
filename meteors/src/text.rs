@@ -780,3 +780,19 @@ pub fn character_t() -> StandardCharacter {
     ];
     Character::new((Topology::TriangleStrip, data), (-size, size))
 }
+
+pub fn character_u() -> StandardCharacter {
+    let line1 = LineBuilder::new()
+        .points([vector!(0.8, 1.0)])
+        .rounded(vector!(0.8 - OUTER_RADIUS, -1.0 + OUTER_RADIUS), OUTER_RADIUS, 90.0, 90.0)
+        .rounded(vector!(-0.8 + OUTER_RADIUS, -1.0 + OUTER_RADIUS), OUTER_RADIUS, 180.0, 90.0)
+        .points([vector!(-0.8, 1.0)]);
+    let line2 = LineBuilder::new()
+        .points([vector!(0.2, 1.0)])
+        .rounded(vector!(0.2 - INNER_RADIUS, -0.8 + INNER_RADIUS), INNER_RADIUS, 90.0, 90.0)
+        .rounded(vector!(-0.2 + INNER_RADIUS, -0.8 + INNER_RADIUS), INNER_RADIUS, 180.0, 90.0)
+        .points([vector!(-0.2, 1.0)]);
+
+    let data = intertwine(line1, line2).collect();
+    Character::new((Topology::TriangleStrip, data), (-0.8, 0.8))
+}

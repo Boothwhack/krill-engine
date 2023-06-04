@@ -361,6 +361,24 @@ pub fn character_9() -> StandardCharacter {
     Character::new((Topology::TriangleStrip, data), (-0.8, 0.8))
 }
 
+pub fn character_colon() -> StandardCharacter {
+    let data = vec![
+        vector!(0.0, 0.6),
+        vector!(0.4, 0.6),
+        vector!(0.0, 0.2),
+        vector!(0.4, 0.6),
+        vector!(0.0, 0.2),
+        vector!(0.4, 0.2),
+        vector!(0.0, -0.2),
+        vector!(0.4, -0.2),
+        vector!(0.0, -0.6),
+        vector!(0.4, -0.2),
+        vector!(0.0, -0.6),
+        vector!(0.4, -0.6),
+    ];
+    Character::new((Topology::Triangles, data), (0.0, 0.4))
+}
+
 pub fn character_a() -> StandardCharacter {
     let line1 = LineBuilder::new()
         .points([vector!(-0.8, -1.0)])

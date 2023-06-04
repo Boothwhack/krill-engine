@@ -765,3 +765,18 @@ pub fn character_s() -> StandardCharacter {
     let data = intertwine(line1, line2).collect();
     Character::new((Topology::TriangleStrip, data), (-0.8, 0.8))
 }
+
+pub fn character_t() -> StandardCharacter {
+    let size = 0.8;
+    let data = vec![
+        vector!(-0.3, -1.0),
+        vector!(0.3, -1.0),
+        vector!(-0.3, 0.8),
+        vector!(0.3, 0.8),
+        vector!(-size, 0.8),
+        vector!(size, 0.8),
+        vector!(-size, 1.0),
+        vector!(size, 1.0),
+    ];
+    Character::new((Topology::TriangleStrip, data), (-size, size))
+}

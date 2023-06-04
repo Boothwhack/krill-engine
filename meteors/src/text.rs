@@ -796,3 +796,17 @@ pub fn character_u() -> StandardCharacter {
     let data = intertwine(line1, line2).collect();
     Character::new((Topology::TriangleStrip, data), (-0.8, 0.8))
 }
+
+pub fn character_v() -> StandardCharacter {
+    let width = 0.5;
+
+    let data = vec![
+        vector!(-0.7, 1.0),
+        vector!(-0.7 + width, 1.0),
+        vector!(-width / 2.0, -1.0),
+        vector!(width / 2.0, -1.0),
+        vector!(0.7 - width, 1.0),
+        vector!(0.7, 1.0),
+    ];
+    Character::new((Topology::TriangleStrip, data), (-0.7, 0.7))
+}

@@ -388,7 +388,7 @@ pub async fn setup_game_resources<A: AssetSource>(resources: HList!(WGPURenderRe
         Some(text::character_s()),
         Some(text::character_t()),
         Some(text::character_u()),
-        None,
+        Some(text::character_v()),
         None,
         None,
         None,
@@ -812,7 +812,7 @@ pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<Surfa
                             None
                         }
                     });
-                let mut offset = -40.0;
+                let mut offset = -50.0;
                 const FONT_SIZE: f32 = 0.1;
                 const LETTER_SPACING: f32 = 0.3;
                 const SAFE_AREA: Vec2 = Vec2::new(0.05, 0.05);

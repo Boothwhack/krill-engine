@@ -29,8 +29,7 @@ use engine::surface::input::{DeviceEvent, ElementState, VirtualKeyCode};
 use engine::utils::{HList, hlist};
 use engine::wgpu_render::WGPURenderResource;
 
-use crate::text;
-use crate::text::{Character, Topology};
+use crate::text::Text;
 
 #[derive(Debug, Default)]
 struct InputState {
@@ -156,17 +155,17 @@ pub struct GameResource {
     state: GameState,
     bounds: Vec2,
     restart_timer: Option<(Instant, Duration)>,
-    characters: [Option<Character<Handle<Geometry>>>; 59],
+    text: Text,
 }
 
 #[derive(Default, Copy, Clone, Pod, Zeroable)]
 #[repr(C)]
-struct Vertex {
-    position: Vec3,
-    color: Color,
+pub struct Vertex {
+    pub position: Vec3,
+    pub color: Color,
 }
 
-const DEFAULT_COLOR: Color = Color::new(0.980392157, 0.921568627, 0.843137255, 1.0);
+pub const DEFAULT_COLOR: Color = Color::new(0.980392157, 0.921568627, 0.843137255, 1.0);
 
 const SHIP_VERTICES: [Vertex; 4] = [
     Vertex { position: vector![-0.3, -0.3, 0.0], color: DEFAULT_COLOR },
@@ -200,7 +199,7 @@ fn calculate_game_bounds(width: u32, height: u32) -> Vec2 {
     }
 }
 
-fn generate_triangle_strip_indices(vertex_count: usize) -> Vec<u16> {
+pub fn generate_triangle_strip_indices(vertex_count: usize) -> Vec<u16> {
     if vertex_count > 2 {
         (0u16..(vertex_count as u16) - 2).flat_map(|i| i..i + 3).collect()
     } else {
@@ -211,21 +210,6 @@ fn generate_triangle_strip_indices(vertex_count: usize) -> Vec<u16> {
 pub async fn setup_game_resources<A: AssetSource>(resources: HList!(WGPURenderResource, AssetSourceResource<A>)) -> HList!(GameResource, WGPURenderResource, AssetSourceResource<A>) {
     let (mut render, resources) = resources;
     let (asset_source, _) = resources;
-
-    let asset_pipelines = {
-        let mut pipelines = HashMap::new();
-        pipelines.insert(
-            TypeId::of::<RenderPipelineAsset>(),
-            Box::new(RenderPipelineAssetPipeline) as _,
-        );
-        pipelines.insert(
-            TypeId::of::<BindGroupLayoutAsset>(),
-            Box::new(BindGroupAssetPipeline) as _,
-        );
-        AssetPipelines::new(pipelines)
-    };
-
-    let surface_format = render.surface_format();
 
     render.register_uniform("camera", UniformDefinition {
         entries: vec![UniformEntryDefinition {
@@ -330,83 +314,7 @@ pub async fn setup_game_resources<A: AssetSource>(resources: HList!(WGPURenderRe
         calculate_game_bounds(width, height)
     } else { Vec2::new(1.0, 1.0) };
 
-    let characters = [
-        // start at ASCII char 32 (space)
-        Some(text::character_space()),
-        Some(text::character_exclamation()),
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        Some(text::character_0()),
-        Some(text::character_1()),
-        Some(text::character_2()),
-        Some(text::character_3()),
-        Some(text::character_4()),
-        Some(text::character_5()),
-        Some(text::character_6()),
-        Some(text::character_7()),
-        Some(text::character_8()),
-        Some(text::character_9()),
-        Some(text::character_colon()),
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        Some(text::character_a()),
-        Some(text::character_b()),
-        Some(text::character_c()),
-        Some(text::character_d()),
-        Some(text::character_e()),
-        Some(text::character_f()),
-        Some(text::character_g()),
-        Some(text::character_h()),
-        Some(text::character_i()),
-        Some(text::character_j()),
-        Some(text::character_k()),
-        Some(text::character_l()),
-        Some(text::character_m()),
-        Some(text::character_n()),
-        Some(text::character_o()),
-        Some(text::character_p()),
-        Some(text::character_q()),
-        Some(text::character_r()),
-        Some(text::character_s()),
-        Some(text::character_t()),
-        Some(text::character_u()),
-        Some(text::character_v()),
-        Some(text::character_w()),
-        Some(text::character_x()),
-        Some(text::character_y()),
-        Some(text::character_z()),
-    ].map(|character|
-        character.map(|char| char.map(|(topology, vertices)| {
-            let vertices: Vec<_> = vertices.into_iter().map(|v| {
-                Vertex { position: vector![v.x, v.y, 0.0], color: DEFAULT_COLOR }
-            }).collect();
-            let indices = match topology {
-                Topology::Triangles => (0..vertices.len() as u16).collect(),
-                Topology::TriangleStrip => generate_triangle_strip_indices(vertices.len()),
-            };
-            render.new_geometry(
-                cast_slice(&vertices).to_vec(),
-                vertex_format.clone(),
-                indices,
-            )
-        }))
-    );
+    let text = Text::new(render.render_mut(), &vertex_format);
 
     let game = GameResource {
         material,
@@ -420,7 +328,7 @@ pub async fn setup_game_resources<A: AssetSource>(resources: HList!(WGPURenderRe
         state: GameState::default(),
         bounds,
         restart_timer: None,
-        characters,
+        text,
     };
     hlist!(game, render, asset_source)
 }
@@ -741,15 +649,7 @@ pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<Surfa
                 let score = score
                     .chars()
                     .filter(|c| c.is_ascii())
-                    .flat_map(|c| c.to_uppercase())
-                    .filter_map(|c| {
-                        let char_code = (c as i32) - 32;
-                        if (0..59).contains(&char_code) {
-                            Some(char_code)
-                        } else {
-                            None
-                        }
-                    });
+                    .flat_map(|c| c.to_uppercase());
                 let mut offset = 0.0;
                 const FONT_SIZE: f32 = 0.05;
                 const LETTER_SPACING: f32 = 0.3;
@@ -760,7 +660,7 @@ pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<Surfa
                     0.0,
                 )) * Matrix4::new_scaling(FONT_SIZE);
                 for char in score {
-                    if let Some(character) = &game.characters[char as usize] {
+                    if let Some(character) = game.text.character(char) {
                         let char_translation = Matrix4::new_translation(&Vec3::new(
                             offset - character.bounds.0,
                             -1.0,

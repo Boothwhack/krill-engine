@@ -1,8 +1,105 @@
 use std::iter::once;
+use bytemuck::cast_slice;
 
 use nalgebra::{vector, Vector2};
+use engine::render::geometry::{Geometry, VertexFormat};
+use engine::render::{Handle, RenderApi};
+use crate::game::{DEFAULT_COLOR, generate_triangle_strip_indices, Vertex};
 
 use crate::text::gen::LineBuilder;
+
+pub struct Text {
+    characters: [Option<Character<Handle<Geometry>>>; 59],
+}
+
+impl Text {
+    pub fn new(render: &mut RenderApi, vertex_format: &VertexFormat) -> Self {
+        Text {
+            characters: [
+                // start at ASCII char 32 (space)
+                Some(character_space()),
+                Some(character_exclamation()),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(character_0()),
+                Some(character_1()),
+                Some(character_2()),
+                Some(character_3()),
+                Some(character_4()),
+                Some(character_5()),
+                Some(character_6()),
+                Some(character_7()),
+                Some(character_8()),
+                Some(character_9()),
+                Some(character_colon()),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(character_a()),
+                Some(character_b()),
+                Some(character_c()),
+                Some(character_d()),
+                Some(character_e()),
+                Some(character_f()),
+                Some(character_g()),
+                Some(character_h()),
+                Some(character_i()),
+                Some(character_j()),
+                Some(character_k()),
+                Some(character_l()),
+                Some(character_m()),
+                Some(character_n()),
+                Some(character_o()),
+                Some(character_p()),
+                Some(character_q()),
+                Some(character_r()),
+                Some(character_s()),
+                Some(character_t()),
+                Some(character_u()),
+                Some(character_v()),
+                Some(character_w()),
+                Some(character_x()),
+                Some(character_y()),
+                Some(character_z()),
+            ].map(|character|
+                character.map(|char| char.map(|(topology, vertices)| {
+                    let vertices: Vec<_> = vertices.into_iter().map(|v| {
+                        Vertex { position: vector![v.x, v.y, 0.0], color: DEFAULT_COLOR }
+                    }).collect();
+                    let indices = match topology {
+                        Topology::Triangles => (0..vertices.len() as u16).collect(),
+                        Topology::TriangleStrip => generate_triangle_strip_indices(vertices.len()),
+                    };
+                    render.new_geometry(
+                        cast_slice(&vertices).to_vec(),
+                        vertex_format.clone(),
+                        indices,
+                    )
+                }))
+            )
+        }
+    }
+
+    pub fn character(&self, character: char) -> Option<&Character<Handle<Geometry>>> {
+        let char_code = (character as usize) - 32;
+        self.characters.get(char_code)?.as_ref()
+    }
+}
 
 mod gen {
     use std::iter::empty;

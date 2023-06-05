@@ -213,7 +213,6 @@ pub struct Batch<'a> {
     material: Handle<Material>,
     uniforms: Vec<&'a UniformInstance>,
     models: Vec<Model>,
-    vertex_count: usize,
     clear: Option<Color>,
 }
 
@@ -223,7 +222,6 @@ impl<'a> Batch<'a> {
             material,
             uniforms,
             models: vec![],
-            vertex_count: 0,
             clear: None,
         }
     }

@@ -85,7 +85,6 @@ enum Shape {
     Ship,
     Meteor,
     Bullet,
-    Char(usize),
 }
 
 impl Shape {
@@ -94,7 +93,6 @@ impl Shape {
             Shape::Ship => game.ship_geometry,
             Shape::Meteor => game.meteor_geometry,
             Shape::Bullet => game.bullet_geometry,
-            Shape::Char(i) => game.characters[*i].as_ref().unwrap().data,
         }
     }
 }
@@ -158,7 +156,7 @@ pub struct GameResource {
     state: GameState,
     bounds: Vec2,
     restart_timer: Option<(Instant, Duration)>,
-    characters: [Option<Character<Handle<Geometry>>>; 58],
+    characters: [Option<Character<Handle<Geometry>>>; 59],
 }
 
 #[derive(Default, Copy, Clone, Pod, Zeroable)]
@@ -336,6 +334,7 @@ pub async fn setup_game_resources<A: AssetSource>(resources: HList!(WGPURenderRe
         // start at ASCII char 32 (space)
         Some(text::character_space()),
         Some(text::character_exclamation()),
+        None,
         None,
         None,
         None,
@@ -714,67 +713,6 @@ pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<Surfa
 
             // Render game
             {
-                /*
-                new render structure:
-
-                Primitives:
-                  Material:
-                    Represents a RenderPipeline, vertex and fragment shader combo
-                    Is registered in the renderer with a unique id
-                    Has a set of vertex attributes and uniforms
-                    Each material being used results in a RenderPass being submitted
-                    Generic enough to potentially be replaced with graph
-                  Batch Formatter/Generator:
-                    Takes generic geometry input and converts into material expected format
-                    Is compiled and cached for max performance
-                  Geometry:
-                    Registered with unique id, possibly hash of contents to detect changes
-                    A list of vertices and indices
-                    Can be rendered with a material
-                    Should each vertex be in the format of the material that can render the
-                    geometry? Or cache a conversion with (GeoID, MatID) as key?
-                    Gets copied in attribute by attribute into the batch vertex buffer
-                  Canvas (surface):
-                    A texture onto which geometry is drawn
-                    Might be the application surface, or a plain texture
-                  Scene:
-                    Common uniforms available to all materials, like projection matrix
-
-
-                Drawing process:
-                  DrawEvent, DrawContext:
-                    Find everything to be drawn in the ecs and collect geometry and material handles.
-                    Send geometry to Scene
-                    Finalizes by submitting the canvas to draw to, texture or screen canvas
-                  Render system:
-                    Gets handed the geometry and material handles and uniform data
-                    Converts raw geometry data according to material specs
-                    Sets up the RenderPass and possibly surface texture
-
-
-                Material definition:
-                [[attributes]]
-                semantics = "position"
-                type = "f32x3"
-
-                [[attributes]]
-                semantics = "color"
-                type = "f32x4"
-
-                [[uniforms]]
-                name = "View matrix"
-                semantics = "projection"
-                type = "f32x4x4"
-
-
-                Geometry definition:
-                data = "data-file.bin"
-
-                [[attributes]]
-                semantics = "position"
-                type = "f32x3"
-                 */
-
                 // setup camera uniform buffer
                 let camera_scale = Vec2::new(1.0 / game.bounds.x, 1.0 / game.bounds.y);
                 let view_matrix: Matrix4<f32> = Matrix4::new_nonuniform_scaling(&Vec3::new(camera_scale.x, camera_scale.y, 1.0));
@@ -783,7 +721,8 @@ pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<Surfa
                     .unwrap()
                     .upload(0, bytes_of(&view_matrix));
 
-                let mut shapes_instances: HashMap<Shape, Vec<Matrix4<f32>>> = HashMap::new();
+                //let mut shapes_instances: HashMap<Shape, Vec<Matrix4<f32>>> = HashMap::new();
+                let mut models: Vec<Model> = vec![];
 
                 // collect shapes from the ecs (player, meteors and bullets)
                 let shapes = View::builder()
@@ -791,30 +730,35 @@ pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<Surfa
                     .required::<Transform>()
                     .build(&game.state.world);
                 for (_, (shape, (transform, ()))) in shapes.iter() {
-                    shapes_instances.entry(*shape)
-                        .or_default()
-                        .push(transform.to_matrix());
+                    models.push(Model::new(
+                        shape.get_geometry(game),
+                        transform.to_matrix(),
+                    ));
                 }
 
                 // score text
-                //let score = format!("SCORE: {}", game.state.score);
-                let score = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+                let score = format!("{}", game.state.score);
                 let score = score
                     .chars()
                     .filter(|c| c.is_ascii())
                     .flat_map(|c| c.to_uppercase())
                     .filter_map(|c| {
                         let char_code = (c as i32) - 32;
-                        if (0..58).contains(&char_code) {
+                        if (0..59).contains(&char_code) {
                             Some(char_code)
                         } else {
                             None
                         }
                     });
-                let mut offset = -10.0;
-                const FONT_SIZE: f32 = 0.1;
+                let mut offset = 0.0;
+                const FONT_SIZE: f32 = 0.05;
                 const LETTER_SPACING: f32 = 0.3;
                 const SAFE_AREA: Vec2 = Vec2::new(0.05, 0.05);
+                let text_translation = Matrix4::new_translation(&Vec3::new(
+                    -game.bounds.x + SAFE_AREA.x,
+                    game.bounds.y - SAFE_AREA.y,
+                    0.0,
+                )) * Matrix4::new_scaling(FONT_SIZE);
                 for char in score {
                     if let Some(character) = &game.characters[char as usize] {
                         let char_translation = Matrix4::new_translation(&Vec3::new(
@@ -822,18 +766,12 @@ pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<Surfa
                             -1.0,
                             0.0,
                         ));
-                        let s = Matrix4::new_scaling(FONT_SIZE);
-                        let text_translation = Matrix4::new_translation(&Vec3::new(
-                            -game.bounds.x + SAFE_AREA.x,
-                            game.bounds.y - SAFE_AREA.y,
-                            0.0,
-                        ));
 
                         offset += character.size() + LETTER_SPACING;
-
-                        shapes_instances.entry(Shape::Char(char as _))
-                            .or_default()
-                            .push(text_translation * s * char_translation);
+                        models.push(Model::new(
+                            character.data,
+                            text_translation * char_translation,
+                        ));
                     }
                 }
 
@@ -843,15 +781,7 @@ pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<Surfa
 
                 let mut batch = Batch::new(game.material, vec![&game.camera_uniform]);
                 batch.clear(Color::rgb(0, 3, 22, 1.0));
-                for (shape, transforms) in shapes_instances {
-                    let geometry = shape.get_geometry(game);
-                    for transform in transforms {
-                        batch.model(Model {
-                            geometry,
-                            transform,
-                        });
-                    }
-                }
+                batch.models(models);
 
                 drawer.submit_batch(batch);
                 drawer.finish();

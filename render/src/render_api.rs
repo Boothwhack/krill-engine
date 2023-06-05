@@ -230,6 +230,11 @@ impl<'a> Batch<'a> {
         self.models.push(model);
     }
 
+    pub fn models<I>(&mut self, iter: I)
+    where I: IntoIterator<Item=Model> {
+        self.models.extend(iter);
+    }
+
     pub fn clear(&mut self, color: Color) {
         self.clear = Some(color);
     }

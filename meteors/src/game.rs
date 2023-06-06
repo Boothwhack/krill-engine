@@ -1,34 +1,28 @@
-use std::any::TypeId;
 use std::collections::HashMap;
 use std::mem::size_of;
 use std::time::Duration;
 
-use bytemuck::{bytes_of, cast_slice};
-use bytemuck_derive::{Pod, Zeroable};
+use bytemuck::bytes_of;
 use float_ord::FloatOrd;
 use instant::Instant;
 use log::debug;
-use nalgebra::{Matrix4, RealField, Rotation3, vector, Vector2, Vector3};
-use rand::{random, Rng, SeedableRng};
-use rand::distributions::Standard;
-use rand::rngs::StdRng;
+use nalgebra::{Matrix4, RealField, Rotation3, Vector2, Vector3};
+use rand::random;
 
 use engine::asset_resource::AssetSourceResource;
-use engine::assets::AssetPipelines;
 use engine::assets::source::AssetSource;
 use engine::ecs::world::{View, World};
 use engine::events::{Context, ContextWith};
 use engine::render::{Batch, BufferUsages, Color, Handle, Model, VecBuf};
-use engine::render::bindgroup::serial::{BindGroupAssetPipeline, BindGroupLayoutAsset};
-use engine::render::geometry::{Geometry, VertexFormat};
+use engine::render::geometry::VertexFormat;
 use engine::render::material::{AttributeDefinition, AttributeSemantics, AttributeType, Material, MaterialDefinition, PipelineDefinition, Shader, UniformDefinition, UniformEntryDefinition, UniformEntryTypeDefinition, UniformVisibility};
-use engine::render::pipeline::serial::{RenderPipelineAsset, RenderPipelineAssetPipeline};
 use engine::render::uniform::{UniformInstance, UniformInstanceEntry};
 use engine::surface::{Exit, RunnableSurface, SurfaceEvent, SurfaceResource};
 use engine::surface::input::{DeviceEvent, ElementState, VirtualKeyCode};
 use engine::utils::{HList, hlist};
 use engine::wgpu_render::WGPURenderResource;
 
+use crate::graphics::{Graphics, Shape};
 use crate::text::Text;
 
 #[derive(Debug, Default)]
@@ -79,23 +73,6 @@ enum Type {
     Meteor,
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-enum Shape {
-    Ship,
-    Meteor,
-    Bullet,
-}
-
-impl Shape {
-    fn get_geometry(&self, game: &GameResource) -> Handle<Geometry> {
-        match self {
-            Shape::Ship => game.ship_geometry,
-            Shape::Meteor => game.meteor_geometry,
-            Shape::Bullet => game.bullet_geometry,
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct Collider {
     size: f32,
@@ -144,50 +121,17 @@ impl Default for GameState {
 }
 
 pub struct GameResource {
-    material: Handle<Material>,
-    ship_geometry: Handle<Geometry>,
-    meteor_geometry: Handle<Geometry>,
-    bullet_geometry: Handle<Geometry>,
-    camera_uniform: UniformInstance,
-    camera_uniform_buffer: Handle<VecBuf>,
-    previous_frame: Instant,
+    pub material: Handle<Material>,
+    pub graphics: Graphics,
+    pub camera_uniform: UniformInstance,
+    pub camera_uniform_buffer: Handle<VecBuf>,
+    pub previous_frame: Instant,
     input_state: InputState,
-    state: GameState,
-    bounds: Vec2,
-    restart_timer: Option<(Instant, Duration)>,
-    text: Text,
+    pub state: GameState,
+    pub bounds: Vec2,
+    pub restart_timer: Option<(Instant, Duration)>,
+    pub text: Text,
 }
-
-#[derive(Default, Copy, Clone, Pod, Zeroable)]
-#[repr(C)]
-pub struct Vertex {
-    pub position: Vec3,
-    pub color: Color,
-}
-
-pub const DEFAULT_COLOR: Color = Color::new(0.980392157, 0.921568627, 0.843137255, 1.0);
-
-const SHIP_VERTICES: [Vertex; 4] = [
-    Vertex { position: vector![-0.3, -0.3, 0.0], color: DEFAULT_COLOR },
-    Vertex { position: vector![0.0, -0.2, 0.0], color: DEFAULT_COLOR },
-    Vertex { position: vector![0.0, 0.3, 0.0], color: DEFAULT_COLOR },
-    Vertex { position: vector![0.3, -0.3, 0.0], color: DEFAULT_COLOR },
-];
-const SHIP_INDICES: [u16; 6] = [
-    0, 1, 2,
-    1, 2, 3,
-];
-
-const BULLET_VERTICES: [Vertex; 4] = [
-    Vertex { position: Vec3::new(0.04, -0.08, 0.0), color: DEFAULT_COLOR },
-    Vertex { position: Vec3::new(0.04, 0.08, 0.0), color: DEFAULT_COLOR },
-    Vertex { position: Vec3::new(-0.04, -0.08, 0.0), color: DEFAULT_COLOR },
-    Vertex { position: Vec3::new(-0.04, 0.08, 0.0), color: DEFAULT_COLOR },
-];
-const BULLET_INDICES: [u16; 6] = [
-    0, 1, 2,
-    1, 2, 3,
-];
 
 fn calculate_game_bounds(width: u32, height: u32) -> Vec2 {
     let aspect_ratio = width as f32 / height as f32;
@@ -196,14 +140,6 @@ fn calculate_game_bounds(width: u32, height: u32) -> Vec2 {
         Vec2::new(1.0, height as f32 / width as f32)
     } else {
         Vec2::new(aspect_ratio, 1.0)
-    }
-}
-
-pub fn generate_triangle_strip_indices(vertex_count: usize) -> Vec<u16> {
-    if vertex_count > 2 {
-        (0u16..(vertex_count as u16) - 2).flat_map(|i| i..i + 3).collect()
-    } else {
-        vec![]
     }
 }
 
@@ -246,39 +182,6 @@ pub async fn setup_game_resources<A: AssetSource>(resources: HList!(WGPURenderRe
         },
     );
 
-    // generate meteor geometry
-    let meteor_vertices = {
-        let radius = 0.5;
-        let mut vertices: [Vertex; 10] = Default::default();
-
-        let mut indices = vec![0];
-        for i in 1..=vertices.len() / 2 {
-            indices.push(i);
-            indices.push(vertices.len() - i);
-        }
-
-        let mut rng = StdRng::seed_from_u64(0).sample_iter::<f32, _>(Standard);
-
-        let vertex_count = vertices.len();
-        for (i, vertex) in vertices.iter_mut().enumerate() {
-            let progress = (indices[i] as f32 / vertex_count as f32) * f32::pi() * 2.0;
-
-            let random_x = rng.next().unwrap() * 0.09;
-            let random_y = rng.next().unwrap() * 0.08;
-
-            *vertex = Vertex {
-                position: Vec3::new(
-                    progress.sin() * radius + random_x,
-                    progress.cos() * radius + random_y,
-                    0.0,
-                ),
-                color: DEFAULT_COLOR,
-            };
-        }
-
-        vertices
-    };
-
     let vertex_format = VertexFormat::from(vec![
         AttributeDefinition {
             name: Some("position".to_owned()),
@@ -291,36 +194,22 @@ pub async fn setup_game_resources<A: AssetSource>(resources: HList!(WGPURenderRe
             typ: AttributeType::Float32(4),
         },
     ]);
-    let ship_geometry = render.new_geometry(
-        cast_slice(&SHIP_VERTICES).to_vec(),
-        vertex_format.clone(),
-        SHIP_INDICES.to_vec(),
-    );
-    let meteor_geometry = render.new_geometry(
-        cast_slice(&meteor_vertices).to_vec(),
-        vertex_format.clone(),
-        generate_triangle_strip_indices(meteor_vertices.len()),
-    );
-    let bullet_geometry = render.new_geometry(
-        cast_slice(&BULLET_VERTICES).to_vec(),
-        vertex_format.clone(),
-        BULLET_INDICES.to_vec(),
-    );
 
     let camera_uniform_buffer = render.new_buffer(size_of::<Matrix4<f32>>(), BufferUsages::UNIFORM | BufferUsages::COPY_DST);
     let camera_uniform = render.instantiate_uniform("camera", vec![Some(UniformInstanceEntry::Buffer(camera_uniform_buffer.into()))]);
 
     let bounds = if let Some((width, height)) = render.surface_size() {
         calculate_game_bounds(width, height)
-    } else { Vec2::new(1.0, 1.0) };
+    } else {
+        Vec2::new(1.0, 1.0)
+    };
 
     let text = Text::new(render.render_mut(), &vertex_format);
+    let graphics = Graphics::new(render.render_mut(), &vertex_format);
 
     let game = GameResource {
         material,
-        ship_geometry,
-        meteor_geometry,
-        bullet_geometry,
+        graphics,
         camera_uniform,
         camera_uniform_buffer,
         previous_frame: Instant::now(),
@@ -639,7 +528,7 @@ pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<Surfa
                     .build(&game.state.world);
                 for (_, (shape, (transform, ()))) in shapes.iter() {
                     models.push(Model::new(
-                        shape.get_geometry(game),
+                        game.graphics.get_geometry(shape),
                         transform.to_matrix(),
                     ));
                 }

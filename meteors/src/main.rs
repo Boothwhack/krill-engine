@@ -1,15 +1,15 @@
-use log::Level;
 use engine::events::Listeners;
 use engine::platform::{detect_platform, Platform, SetupPlatformDefaultsExt};
 use engine::process::ProcessBuilder;
 use engine::surface::RunExt;
 
 mod game;
+mod graphics;
 mod text;
 
 fn main() {
     #[cfg(target_family = "wasm")]
-    console_log::init_with_level(Level::Debug).unwrap();
+    console_log::init_with_level(log::Level::Debug).unwrap();
 
     #[cfg(not(target_family = "wasm"))]
     env_logger::builder().target(env_logger::Target::Stdout).init();

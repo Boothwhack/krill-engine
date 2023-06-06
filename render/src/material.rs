@@ -216,7 +216,8 @@ impl Material {
             cache: RefCell::new(MaterialCache {
                 vertex_buffer: device.create_buffer(0, BufferUsages::VERTEX | BufferUsages::COPY_DST),
                 index_buffer: device.create_buffer(0, BufferUsages::INDEX | BufferUsages::COPY_DST),
-                staging_buffer: vec![],
+                vertex_staging_buffer: vec![],
+                index_staging_buffer: vec![],
             }),
         }
     }
@@ -224,78 +225,63 @@ impl Material {
     pub fn cache_models(&self, device: &DeviceContext, resources: &DeviceResources, models: &[Model]) -> Counter {
         let mut index_counter = 0;
         let mut vertex_counter = 0;
-        {
-            let geometries: Vec<_> = models.into_iter()
-                .map(|model| {
-                    (model.transform, resources.geometries.get(model.geometry).unwrap())
-                })
-                .collect();
 
-            // sum required size of vertex data and index count
-            let (indices, vertex_data_size) = geometries.iter().fold((0, 0), |(indices, vertex_data_size), (_, geometry)| {
-                (indices + geometry.indices.len(), vertex_data_size + geometry.vertex_data.len())
-            });
+        let mut cache = self.cache();
+        let cache = cache.deref_mut();
+        let mut vertex_buffer = MutableHandle::from_ref(device, &mut cache.vertex_buffer);
+        let mut index_buffer = MutableHandle::from_ref(device, &mut cache.index_buffer);
 
-            let mut cache = self.cache();
-            let cache = cache.deref_mut();
-            let mut vertex_buffer = MutableHandle::from_ref(device, &mut cache.vertex_buffer);
-            let mut index_buffer = MutableHandle::from_ref(device, &mut cache.index_buffer);
+        for model in models {
+            let geometry = resources.geometries.get(model.geometry).unwrap();
 
-            // reserve required capacity
-            vertex_buffer.set_capacity_at_least(vertex_data_size, false);
-            index_buffer.set_capacity_at_least(indices * size_of::<u16>(), false);
+            let vertex_offset = cache.vertex_staging_buffer.len();
 
-            for (transform, geometry) in geometries {
-                let to_reserve = geometry.vertex_data.len() as isize - cache.staging_buffer.capacity() as isize;
-                if to_reserve > 0 {
-                    cache.staging_buffer.reserve(to_reserve as _);
-                }
+            cache.vertex_staging_buffer.extend_from_slice(&geometry.vertex_data);
+            cache.index_staging_buffer.extend_from_slice(&geometry.indices);
 
-                // For now the vertex data is simply copied to the staging buffer and
-                // transformations are only applied to position attributes using the transform
-                // matrix. This will be replaced with a proper system to convert the geometry data
-                // into the vertex format the material is expecting at a later time.
-                cache.staging_buffer.extend_from_slice(&geometry.vertex_data);
-                let vertices = cache.staging_buffer.chunks_exact_mut(geometry.vertex_format.vertex_size());
-                let vertex_count = vertices.len();
-                for vertex in vertices {
-                    let mut offset = 0;
-                    for attrib in geometry.vertex_format.attributes() {
-                        let size = attrib.typ.size();
-                        let attrib_data = &mut vertex[offset..offset + size];
+            // For now the vertex data is simply copied to the staging buffer and
+            // transformations are only applied to position attributes using the transform
+            // matrix. This will be replaced with a proper system to convert the geometry data
+            // into the vertex format the material is expecting at a later time.
+            let vertices = cache.vertex_staging_buffer[vertex_offset..vertex_offset+geometry.vertex_data.len()]
+                .chunks_exact_mut(geometry.vertex_format.vertex_size());
+            let vertex_count = vertices.len();
+            for vertex in vertices {
+                let mut offset = 0;
+                for attrib in geometry.vertex_format.attributes() {
+                    let size = attrib.typ.size();
+                    let attrib_data = &mut vertex[offset..offset + size];
 
-                        match attrib.semantics {
-                            AttributeSemantics::Position { transform: PositionTransformation::Model } => {
-                                let position: &mut Point3<f32> = from_bytes_mut(attrib_data);
-                                *position = transform.transform_point(position);
-                            }
-                            _ => {}
+                    match attrib.semantics {
+                        AttributeSemantics::Position { transform: PositionTransformation::Model } => {
+                            let position: &mut Point3<f32> = from_bytes_mut(attrib_data);
+                            *position = model.transform.transform_point(position);
                         }
-
-                        offset += size;
+                        _ => {}
                     }
+
+                    offset += size;
                 }
-
-                vertex_buffer.push(cache.staging_buffer.as_slice());
-                cache.staging_buffer.clear();
-
-                cache.staging_buffer.extend_from_slice(cast_slice(&geometry.indices));
-                if !cache.staging_buffer.is_empty() {
-                    for index in cast_slice_mut::<_, u16>(&mut cache.staging_buffer) {
-                        *index += vertex_counter;
-                    }
-                }
-                vertex_counter += vertex_count as u16;
-                index_buffer.push(cast_slice(&cache.staging_buffer));
-                cache.staging_buffer.clear();
-
-                index_counter += geometry.indices.len();
             }
+
+            // Update index offset
+            let indices = &mut cache.index_staging_buffer[index_counter..index_counter+geometry.indices.len()];
+            for index in indices.iter_mut() {
+                *index += vertex_counter as u16;
+            }
+
+            vertex_counter += vertex_count;
+            index_counter += geometry.indices.len();
         }
+
+        vertex_buffer.upload(0, cast_slice(&cache.vertex_staging_buffer));
+        index_buffer.upload(0, cast_slice(&cache.index_staging_buffer));
+        cache.vertex_staging_buffer.clear();
+        cache.index_staging_buffer.clear();
 
         Counter {
             indices: index_counter as _,
-            vertices: vertex_counter,
+            vertices: vertex_counter as _,
         }
     }
 
@@ -311,5 +297,6 @@ impl Material {
 pub(crate) struct MaterialCache {
     pub(crate) vertex_buffer: VecBuf,
     pub(crate) index_buffer: VecBuf,
-    pub(crate) staging_buffer: Vec<u8>,
+    pub(crate) vertex_staging_buffer: Vec<u8>,
+    pub(crate) index_staging_buffer: Vec<u16>,
 }

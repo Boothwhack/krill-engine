@@ -150,6 +150,10 @@ impl<'a> Drawer<'a> {
 
         let Counter { vertices, indices } = material.cache_models(self.context, self.resources, &batch.models);
 
+        if indices == 0 {
+            return;
+        }
+
         let material_cache = material.cache();
         let uniform_caches: Vec<_> = batch.uniforms.into_iter().map(|uniform| {
             uniform.validate_bind_group(self.context, self.resources);

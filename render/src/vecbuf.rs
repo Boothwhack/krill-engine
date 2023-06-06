@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use wgpu::BufferAddress;
 
 use crate::{BufferUsages, MutableHandle};
@@ -41,6 +42,10 @@ impl VecBuf {
     pub fn entire_slice(&self) -> wgpu::BufferSlice {
         self.buffer.slice(0..self.size as _)
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.size == 0
+    }
 }
 
 impl<'a> MutableHandle<'a, VecBuf> {
@@ -51,7 +56,7 @@ impl<'a> MutableHandle<'a, VecBuf> {
         self.clear();
 
         if self.resource.capacity < size {
-            let size = size as wgpu::BufferAddress;
+            let size = size as BufferAddress;
             let size = size + size % wgpu::COPY_BUFFER_ALIGNMENT;
             self.resource.buffer = self.context.device.create_buffer(&wgpu::BufferDescriptor {
                 label: wgpu::Label::default(),
@@ -71,25 +76,25 @@ impl<'a> MutableHandle<'a, VecBuf> {
     /// Destructively uploads new data to this buffer. Old data may remain if the new data is
     /// smaller than the buffer's capacity.
     pub fn upload(&mut self, offset: usize, data: &[u8]) {
+        let mut data = Cow::from(data);
+        let align = data.len() as BufferAddress % wgpu::COPY_BUFFER_ALIGNMENT;
+        if align != 0 {
+            let len = data.len() + align as usize;
+            data.to_mut().resize(len, 0);
+        }
+
         if self.set_capacity_at_least(offset + data.len(), true) {
-            let mut view = self.resource.buffer
-                .slice(offset as BufferAddress..offset as BufferAddress + data.len() as BufferAddress)
-                .get_mapped_range_mut();
-            view.copy_from_slice(data);
+            {
+                let mut view = self.resource.buffer
+                    .slice(offset as BufferAddress..offset as BufferAddress + data.len() as BufferAddress)
+                    .get_mapped_range_mut();
+                view.copy_from_slice(&data);
+            }
             self.resource.buffer.unmap();
         } else {
-            self.context.queue.write_buffer(&self.resource.buffer, offset as _, data);
+            self.context.queue.write_buffer(&self.resource.buffer, offset as _, &data);
         }
-    }
-
-    /// Pushes data to the end of the buffers data. Panics if the operation would exceed the
-    /// buffer's capacity.
-    pub fn push(&mut self, data: &[u8]) {
-        if self.resource.size + data.len() > self.resource.capacity {
-            panic!("buffer capacity overflow");
-        }
-        self.context.queue.write_buffer(&self.resource.buffer, self.resource.size as _, data);
-        self.resource.size += data.len();
+        self.resource.size = data.len();
     }
 
     pub fn clear(&mut self) {

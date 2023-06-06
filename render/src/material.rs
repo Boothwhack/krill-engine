@@ -1,10 +1,9 @@
 use std::cell::{RefCell, RefMut};
 use std::collections::HashMap;
-use std::mem::size_of;
 use std::ops::DerefMut;
 use std::str::FromStr;
 
-use bytemuck::{cast_slice, cast_slice_mut, from_bytes_mut};
+use bytemuck::{cast_slice, from_bytes_mut};
 use nalgebra::Point3;
 use serde::{Deserialize, Deserializer};
 use thiserror::Error;

@@ -7,6 +7,8 @@ use rand::rngs::StdRng;
 
 use engine::render::{Color, Handle, Model, RenderApi};
 use engine::render::geometry::{Geometry, VertexFormat};
+use engine::render::material::{AttributeDefinition, AttributeSemantics, AttributeType};
+use crate::text::Text;
 
 #[derive(Default, Copy, Clone, Pod, Zeroable)]
 #[repr(C)]
@@ -19,10 +21,24 @@ pub struct Graphics {
     pub ship_geometry: Handle<Geometry>,
     pub meteor_geometry: Handle<Geometry>,
     pub bullet_geometry: Handle<Geometry>,
+    pub text: Text,
 }
 
 impl Graphics {
-    pub fn new(render: &mut RenderApi, vertex_format: &VertexFormat) -> Self {
+    pub fn new(render: &mut RenderApi) -> Self {
+        let vertex_format = VertexFormat::from(vec![
+            AttributeDefinition {
+                name: Some("position".to_owned()),
+                semantics: AttributeSemantics::Position { transform: Default::default() },
+                typ: AttributeType::Float32(3),
+            },
+            AttributeDefinition {
+                name: Some("color".to_owned()),
+                semantics: AttributeSemantics::Color,
+                typ: AttributeType::Float32(4),
+            },
+        ]);
+
         let ship_geometry = render.new_geometry(
             cast_slice(&SHIP_VERTICES).to_vec(),
             vertex_format.clone(),
@@ -44,6 +60,7 @@ impl Graphics {
             ship_geometry,
             meteor_geometry,
             bullet_geometry,
+            text: Text::new(render, &vertex_format),
         }
     }
 

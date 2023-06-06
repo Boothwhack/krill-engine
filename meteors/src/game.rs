@@ -13,8 +13,7 @@ use engine::asset_resource::AssetSourceResource;
 use engine::assets::source::AssetSource;
 use engine::ecs::world::{View, World};
 use engine::events::{Context, ContextWith};
-use engine::render::{Batch, BufferUsages, Color, Handle, Model, VecBuf};
-use engine::render::geometry::VertexFormat;
+use engine::render::{Batch, BufferUsages, Handle, Model, VecBuf};
 use engine::render::material::{AttributeDefinition, AttributeSemantics, AttributeType, Material, MaterialDefinition, PipelineDefinition, Shader, UniformDefinition, UniformEntryDefinition, UniformEntryTypeDefinition, UniformVisibility};
 use engine::render::uniform::{UniformInstance, UniformInstanceEntry};
 use engine::surface::{Exit, RunnableSurface, SurfaceEvent, SurfaceResource};
@@ -23,7 +22,6 @@ use engine::utils::{HList, hlist};
 use engine::wgpu_render::WGPURenderResource;
 
 use crate::graphics::{BACKGROUND_COLOR, FOREGROUND_COLOR, Graphics, Shape};
-use crate::text::Text;
 
 #[derive(Debug, Default)]
 struct InputState {
@@ -130,7 +128,6 @@ pub struct GameResource {
     pub state: GameState,
     pub bounds: Vec2,
     pub restart_timer: Option<(Instant, Duration)>,
-    pub text: Text,
 }
 
 fn calculate_game_bounds(width: u32, height: u32) -> Vec2 {
@@ -182,19 +179,6 @@ pub async fn setup_game_resources<A: AssetSource>(resources: HList!(WGPURenderRe
         },
     );
 
-    let vertex_format = VertexFormat::from(vec![
-        AttributeDefinition {
-            name: Some("position".to_owned()),
-            semantics: AttributeSemantics::Position { transform: Default::default() },
-            typ: AttributeType::Float32(3),
-        },
-        AttributeDefinition {
-            name: Some("color".to_owned()),
-            semantics: AttributeSemantics::Color,
-            typ: AttributeType::Float32(4),
-        },
-    ]);
-
     let camera_uniform_buffer = render.new_buffer(size_of::<Matrix4<f32>>(), BufferUsages::UNIFORM | BufferUsages::COPY_DST);
     let camera_uniform = render.instantiate_uniform("camera", vec![Some(UniformInstanceEntry::Buffer(camera_uniform_buffer.into()))]);
 
@@ -204,8 +188,7 @@ pub async fn setup_game_resources<A: AssetSource>(resources: HList!(WGPURenderRe
         Vec2::new(1.0, 1.0)
     };
 
-    let text = Text::new(render.render_mut(), &vertex_format);
-    let graphics = Graphics::new(render.render_mut(), &vertex_format);
+    let graphics = Graphics::new(render.render_mut());
 
     let game = GameResource {
         material,
@@ -217,7 +200,6 @@ pub async fn setup_game_resources<A: AssetSource>(resources: HList!(WGPURenderRe
         state: GameState::default(),
         bounds,
         restart_timer: None,
-        text,
     };
     hlist!(game, render, asset_source)
 }
@@ -546,7 +528,7 @@ pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<Surfa
                     0.0,
                 )) * Matrix4::new_scaling(FONT_SIZE);
                 for char in score {
-                    if let Some(character) = game.text.character(char) {
+                    if let Some(character) = game.graphics.text.character(char) {
                         let char_translation = Matrix4::new_translation(&Vec3::new(
                             offset - character.bounds.0,
                             -1.0,

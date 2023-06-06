@@ -22,7 +22,7 @@ use engine::surface::input::{DeviceEvent, ElementState, VirtualKeyCode};
 use engine::utils::{HList, hlist};
 use engine::wgpu_render::WGPURenderResource;
 
-use crate::graphics::{DEFAULT_COLOR, Graphics, Shape};
+use crate::graphics::{BACKGROUND_COLOR, FOREGROUND_COLOR, Graphics, Shape};
 use crate::text::Text;
 
 #[derive(Debug, Default)]
@@ -557,7 +557,7 @@ pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<Surfa
                         models.push(Model::new(
                             character.data,
                             text_translation * char_translation,
-                            DEFAULT_COLOR,
+                            FOREGROUND_COLOR,
                         ));
                     }
                 }
@@ -567,7 +567,7 @@ pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<Surfa
                 let mut drawer = render.new_drawer(&frame);
 
                 let mut batch = Batch::new(game.material, vec![&game.camera_uniform]);
-                batch.clear(Color::rgb(0, 3, 22, 1.0));
+                batch.clear(BACKGROUND_COLOR);
                 batch.models(models);
 
                 drawer.submit_batch(batch);

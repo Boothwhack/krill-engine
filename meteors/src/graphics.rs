@@ -53,7 +53,7 @@ impl Graphics {
             Shape::Meteor => self.meteor_geometry,
             Shape::Bullet => self.bullet_geometry,
         };
-        models.push(Model::new(geometry, transform, DEFAULT_COLOR));
+        models.push(Model::new(geometry, transform, FOREGROUND_COLOR));
     }
 }
 
@@ -72,7 +72,8 @@ pub enum Shape {
     Bullet,
 }
 
-pub const DEFAULT_COLOR: Color = Color::new(0.980392157, 0.921568627, 0.843137255, 1.0);
+pub const FOREGROUND_COLOR: Color = Color::new(0.980392157, 0.921568627, 0.843137255, 1.0);
+pub const BACKGROUND_COLOR: Color = Color::new(0.0, 0.011764706, 0.08627451, 1.0);
 
 const SHIP_VERTICES: [Vertex; 4] = [
     Vertex { position: point!(-0.3, -0.3, 0.0), color: Color::WHITE },

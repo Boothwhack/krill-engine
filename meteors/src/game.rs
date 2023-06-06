@@ -22,7 +22,7 @@ use engine::surface::input::{DeviceEvent, ElementState, VirtualKeyCode};
 use engine::utils::{HList, hlist};
 use engine::wgpu_render::WGPURenderResource;
 
-use crate::graphics::{Graphics, Shape};
+use crate::graphics::{DEFAULT_COLOR, Graphics, Shape};
 use crate::text::Text;
 
 #[derive(Debug, Default)]
@@ -527,10 +527,7 @@ pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<Surfa
                     .required::<Transform>()
                     .build(&game.state.world);
                 for (_, (shape, (transform, ()))) in shapes.iter() {
-                    models.push(Model::new(
-                        game.graphics.get_geometry(shape),
-                        transform.to_matrix(),
-                    ));
+                    game.graphics.submit_models(shape, transform.to_matrix(), &mut models);
                 }
 
                 // score text
@@ -560,6 +557,7 @@ pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<Surfa
                         models.push(Model::new(
                             character.data,
                             text_translation * char_translation,
+                            DEFAULT_COLOR,
                         ));
                     }
                 }

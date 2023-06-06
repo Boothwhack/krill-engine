@@ -1,11 +1,12 @@
 use std::iter::once;
+
 use bytemuck::cast_slice;
-
 use nalgebra::{point, vector, Vector2};
-use engine::render::geometry::{Geometry, VertexFormat};
-use engine::render::{Handle, RenderApi};
-use crate::graphics::{DEFAULT_COLOR, generate_triangle_strip_indices, Vertex};
 
+use engine::render::{Color, Handle, RenderApi};
+use engine::render::geometry::{Geometry, VertexFormat};
+
+use crate::graphics::{generate_triangle_strip_indices, Vertex};
 use crate::text::gen::LineBuilder;
 
 pub struct Text {
@@ -79,7 +80,7 @@ impl Text {
             ].map(|character|
                 character.map(|char| char.map(|(topology, vertices)| {
                     let vertices: Vec<_> = vertices.into_iter().map(|v| {
-                        Vertex { position: point![v.x, v.y, 0.0], color: DEFAULT_COLOR }
+                        Vertex { position: point![v.x, v.y, 0.0], color: Color::WHITE }
                     }).collect();
                     let indices = match topology {
                         Topology::Triangles => (0..vertices.len() as u16).collect(),

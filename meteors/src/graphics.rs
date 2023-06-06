@@ -1,11 +1,11 @@
 use bytemuck::cast_slice;
 use bytemuck_derive::{Pod, Zeroable};
-use nalgebra::{point, Point3, RealField};
-use rand::rngs::StdRng;
+use nalgebra::{Matrix4, point, Point3, RealField};
 use rand::{Rng, SeedableRng};
 use rand::distributions::Standard;
+use rand::rngs::StdRng;
 
-use engine::render::{Color, Handle, RenderApi};
+use engine::render::{Color, Handle, Model, RenderApi};
 use engine::render::geometry::{Geometry, VertexFormat};
 
 #[derive(Default, Copy, Clone, Pod, Zeroable)]
@@ -47,12 +47,13 @@ impl Graphics {
         }
     }
 
-    pub fn get_geometry(&self, shape: &Shape) -> Handle<Geometry> {
-        match shape {
+    pub fn submit_models(&self, shape: &Shape, transform: Matrix4<f32>, models: &mut Vec<Model>) {
+        let geometry = match shape {
             Shape::Ship => self.ship_geometry,
             Shape::Meteor => self.meteor_geometry,
             Shape::Bullet => self.bullet_geometry,
-        }
+        };
+        models.push(Model::new(geometry, transform, DEFAULT_COLOR));
     }
 }
 
@@ -74,10 +75,10 @@ pub enum Shape {
 pub const DEFAULT_COLOR: Color = Color::new(0.980392157, 0.921568627, 0.843137255, 1.0);
 
 const SHIP_VERTICES: [Vertex; 4] = [
-    Vertex { position: point!(-0.3, -0.3, 0.0), color: DEFAULT_COLOR },
-    Vertex { position: point!(0.0, -0.2, 0.0), color: DEFAULT_COLOR },
-    Vertex { position: point!(0.0, 0.3, 0.0), color: DEFAULT_COLOR },
-    Vertex { position: point!(0.3, -0.3, 0.0), color: DEFAULT_COLOR },
+    Vertex { position: point!(-0.3, -0.3, 0.0), color: Color::WHITE },
+    Vertex { position: point!(0.0, -0.2, 0.0), color: Color::WHITE },
+    Vertex { position: point!(0.0, 0.3, 0.0), color: Color::WHITE },
+    Vertex { position: point!(0.3, -0.3, 0.0), color: Color::WHITE },
 ];
 const SHIP_INDICES: [u16; 6] = [
     0, 1, 2,
@@ -85,10 +86,10 @@ const SHIP_INDICES: [u16; 6] = [
 ];
 
 const BULLET_VERTICES: [Vertex; 4] = [
-    Vertex { position: point!(0.04, -0.08, 0.0), color: DEFAULT_COLOR },
-    Vertex { position: point!(0.04, 0.08, 0.0), color: DEFAULT_COLOR },
-    Vertex { position: point!(-0.04, -0.08, 0.0), color: DEFAULT_COLOR },
-    Vertex { position: point!(-0.04, 0.08, 0.0), color: DEFAULT_COLOR },
+    Vertex { position: point!(0.04, -0.08, 0.0), color: Color::WHITE },
+    Vertex { position: point!(0.04, 0.08, 0.0), color: Color::WHITE },
+    Vertex { position: point!(-0.04, -0.08, 0.0), color: Color::WHITE },
+    Vertex { position: point!(-0.04, 0.08, 0.0), color: Color::WHITE },
 ];
 const BULLET_INDICES: [u16; 6] = [
     0, 1, 2,
@@ -120,7 +121,7 @@ fn generate_meteor_geometry() -> Vec<Vertex> {
                     progress.cos() * radius + random_y,
                     0.0
                 ),
-            color: DEFAULT_COLOR,
+            color: Color::WHITE,
         };
     }
 

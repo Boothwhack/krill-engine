@@ -205,11 +205,16 @@ impl<'a> Drawer<'a> {
 pub struct Model {
     pub geometry: Handle<Geometry>,
     pub transform: Matrix4<f32>,
+    pub color: Color,
 }
 
 impl Model {
-    pub fn new(geometry: Handle<Geometry>, transform: Matrix4<f32>) -> Self {
-        Model { geometry, transform }
+    pub fn new(geometry: Handle<Geometry>, transform: Matrix4<f32>, color: Color) -> Self {
+        Model {
+            geometry,
+            transform,
+            color,
+        }
     }
 }
 

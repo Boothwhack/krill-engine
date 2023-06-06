@@ -1,3 +1,4 @@
+use std::ops::{Mul, MulAssign};
 use bytemuck_derive::{Pod, Zeroable};
 
 #[derive(Copy, Clone, Debug, Default, Pod, Zeroable)]
@@ -9,7 +10,26 @@ pub struct Color {
     pub a: f32,
 }
 
+impl MulAssign for Color {
+    fn mul_assign(&mut self, rhs: Self) {
+        self.r *= rhs.r;
+        self.g *= rhs.g;
+        self.b *= rhs.b;
+        self.a *= rhs.a;
+    }
+}
+
+impl Mul for Color {
+    type Output = Self;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        Color::new(self.r * rhs.r, self.g * rhs.g, self.b * rhs.b, self.a * rhs.a)
+    }
+}
+
 impl Color {
+    pub const WHITE: Color = Color::new(1.0, 1.0, 1.0, 1.0);
+
     pub const fn new(r: f32, g: f32, b: f32, a: f32) -> Color {
         Color { r, g, b, a }
     }

@@ -11,7 +11,7 @@ use wgpu::VertexFormat;
 
 use utils::Handle;
 
-use crate::{BufferUsages, DeviceContext, Model, MutableHandle, SurfaceContext, VecBuf};
+use crate::{BufferUsages, Color, DeviceContext, Model, MutableHandle, SurfaceContext, VecBuf};
 use crate::render_api::DeviceResources;
 
 #[derive(Deserialize)]
@@ -242,7 +242,7 @@ impl Material {
             // transformations are only applied to position attributes using the transform
             // matrix. This will be replaced with a proper system to convert the geometry data
             // into the vertex format the material is expecting at a later time.
-            let vertices = cache.vertex_staging_buffer[vertex_offset..vertex_offset+geometry.vertex_data.len()]
+            let vertices = cache.vertex_staging_buffer[vertex_offset..vertex_offset + geometry.vertex_data.len()]
                 .chunks_exact_mut(geometry.vertex_format.vertex_size());
             let vertex_count = vertices.len();
             for vertex in vertices {
@@ -256,6 +256,10 @@ impl Material {
                             let position: &mut Point3<f32> = from_bytes_mut(attrib_data);
                             *position = model.transform.transform_point(position);
                         }
+                        AttributeSemantics::Color => {
+                            let color: &mut Color = from_bytes_mut(attrib_data);
+                            *color *= model.color;
+                        }
                         _ => {}
                     }
 
@@ -264,7 +268,7 @@ impl Material {
             }
 
             // Update index offset
-            let indices = &mut cache.index_staging_buffer[index_counter..index_counter+geometry.indices.len()];
+            let indices = &mut cache.index_staging_buffer[index_counter..index_counter + geometry.indices.len()];
             for index in indices.iter_mut() {
                 *index += vertex_counter as u16;
             }

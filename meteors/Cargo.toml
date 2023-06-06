@@ -17,9 +17,9 @@ rand = "0.8"
 
 [target.'cfg(target_family="wasm")'.dependencies]
 console_log = "1.0"
-getrandom = { features = ["js"] }
-wgpu = { features = ["webgl"] }
-winit = { features = ["css-size"] }
+getrandom = { version = "0.2", features = ["js"] }
+wgpu = { version = "0.15", features = ["webgl"] }
+winit = { version = "0.27", features = ["css-size"] }
 
 [target.'cfg(not(target_family="wasm"))'.dependencies]
 env_logger = "0.10"

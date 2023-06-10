@@ -1,10 +1,12 @@
-use std::collections::{HashMap};
-use std::any::{Any, TypeId};
+use std::any::{Any, type_name, TypeId};
+use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+
 use utils::hlist::{FnMapHList, Mappable, Prepend};
-use crate::store::{ComponentStore};
+
+use crate::store::ComponentStore;
 
 pub type Generation = u32;
 
@@ -131,7 +133,8 @@ impl World {
     }
 
     pub fn components<C: 'static>(&self) -> ComponentStoreReadLock<'_, C> {
-        ComponentStoreReadLock::lock(&self.components[&TypeId::of::<C>()])
+        ComponentStoreReadLock::lock(&self.components.get(&TypeId::of::<C>())
+            .expect(&format!("unknown component type: {}", type_name::<C>())))
     }
 
     pub fn components_mut<C: 'static>(&self) -> ComponentStoreWriteLock<'_, C> {
@@ -189,7 +192,6 @@ impl BindingRequirement for Required {
             None => Err(())
         };
         list
-        //component.map(|component| list.prepend(component)).ok_or(())
     }
 }
 
@@ -421,6 +423,7 @@ impl<'a, C: 'static> DerefMut for ComponentStoreLock<'a, C, WriteLockType> {
 #[cfg(test)]
 mod tests {
     use utils::hlist;
+
     use crate::world::{ViewBuilder, World};
 
     #[derive(PartialEq, Eq, Debug)]

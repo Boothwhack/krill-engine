@@ -1,13 +1,18 @@
+use std::collections::HashMap;
+use std::mem::size_of;
 use bytemuck::cast_slice;
 use bytemuck_derive::{Pod, Zeroable};
-use nalgebra::{Matrix4, point, Point3, RealField};
+use nalgebra::{Matrix4, point, Point3, RealField, vector};
 use rand::{Rng, SeedableRng};
 use rand::distributions::Standard;
 use rand::rngs::StdRng;
 
-use engine::render::{Color, Handle, Model, RenderApi};
+use engine::render::{BufferUsages, Color, Handle, Model, RenderApi, VecBuf};
 use engine::render::geometry::{Geometry, VertexFormat};
-use engine::render::material::{AttributeDefinition, AttributeSemantics, AttributeType};
+use engine::render::material::{AttributeDefinition, AttributeSemantics, AttributeType, Material, MaterialDefinition, PipelineDefinition, Shader, UniformDefinition, UniformEntryDefinition, UniformEntryTypeDefinition, UniformVisibility};
+use engine::render::uniform::{UniformInstance, UniformInstanceEntry};
+
+use crate::game::Transform;
 use crate::text::Text;
 
 #[derive(Default, Copy, Clone, Pod, Zeroable)]
@@ -17,15 +22,63 @@ pub struct Vertex {
     pub color: Color,
 }
 
+impl Vertex {
+    pub fn new(position: Point3<f32>, color: Color) -> Self {
+        Vertex { position, color }
+    }
+}
+
 pub struct Graphics {
+    pub material: Handle<Material>,
+    pub camera_uniform: UniformInstance,
+    pub camera_uniform_buffer: Handle<VecBuf>,
     pub ship_geometry: Handle<Geometry>,
     pub meteor_geometry: Handle<Geometry>,
     pub bullet_geometry: Handle<Geometry>,
+    pub play_icon_geometry: Handle<Geometry>,
     pub text: Text,
 }
 
 impl Graphics {
     pub fn new(render: &mut RenderApi) -> Self {
+        render.register_uniform("camera", UniformDefinition {
+            entries: vec![UniformEntryDefinition {
+                visibility: UniformVisibility::Vertex,
+                typ: UniformEntryTypeDefinition::Buffer,
+            }],
+        });
+        let camera_uniform_buffer = render.new_buffer(size_of::<Matrix4<f32>>(), BufferUsages::UNIFORM | BufferUsages::COPY_DST);
+        let camera_uniform = render.instantiate_uniform("camera", vec![Some(UniformInstanceEntry::Buffer(camera_uniform_buffer.into()))]);
+
+        let material = render.new_material(
+            MaterialDefinition {
+                attributes: vec![
+                    AttributeDefinition {
+                        name: None,
+                        semantics: AttributeSemantics::Position { transform: Default::default() },
+                        typ: AttributeType::Float32(3),
+                    },
+                    AttributeDefinition {
+                        name: None,
+                        semantics: AttributeSemantics::Color,
+                        typ: AttributeType::Float32(4),
+                    },
+                ],
+                uniforms: vec!["camera".to_owned()],
+            },
+            PipelineDefinition {
+                shader_modules: vec![include_str!("assets/game.wgsl").to_owned()],
+                vertex_shader: Shader { index: 0, entrypoint: "vs_main".to_owned() },
+                fragment_shader: Shader { index: 0, entrypoint: "fs_main".to_owned() },
+                attribute_locations: {
+                    let mut attributes = HashMap::new();
+                    attributes.insert("position".to_owned(), 0);
+                    attributes.insert("color".to_owned(), 1);
+                    attributes
+                },
+            },
+        );
+
         let vertex_format = VertexFormat::from(vec![
             AttributeDefinition {
                 name: Some("position".to_owned()),
@@ -56,21 +109,60 @@ impl Graphics {
             BULLET_INDICES.to_vec(),
         );
 
+        let play_icon_geometry = render.new_geometry(
+            cast_slice(&[
+                Vertex::new(point!(-0.02, 0.02, 0.0), Color::WHITE),
+                Vertex::new(point!(-0.02, -0.02, 0.0), Color::WHITE),
+                Vertex::new(point!(0.02, 0.0, 0.0), Color::WHITE),
+            ]).to_vec(),
+            vertex_format.clone(),
+            vec![0, 1, 2],
+        );
+
         Graphics {
+            material,
+            camera_uniform,
+            camera_uniform_buffer,
             ship_geometry,
             meteor_geometry,
             bullet_geometry,
+            play_icon_geometry,
             text: Text::new(render, &vertex_format),
         }
     }
 
-    pub fn submit_models(&self, shape: &Shape, transform: Matrix4<f32>, models: &mut Vec<Model>) {
-        let geometry = match shape {
-            Shape::Ship => self.ship_geometry,
-            Shape::Meteor => self.meteor_geometry,
-            Shape::Bullet => self.bullet_geometry,
+    pub fn draw_shape(&self, shape: &Shape, transform: &Transform, models: &mut Vec<Model>) {
+        match shape {
+            Shape::Ship => models.push(Model::new(self.ship_geometry, transform.to_matrix(), FOREGROUND_COLOR)),
+            Shape::Meteor => models.push(Model::new(self.meteor_geometry, transform.to_matrix(), FOREGROUND_COLOR)),
+            Shape::Bullet => models.push(Model::new(self.bullet_geometry, transform.to_matrix(), FOREGROUND_COLOR)),
         };
-        models.push(Model::new(geometry, transform, FOREGROUND_COLOR));
+    }
+
+    pub fn draw_text(&self, text: &str, transform: Matrix4<f32>, color: Color, models: &mut Vec<Model>) {
+        let text = text
+            .chars()
+            .filter(|c| c.is_ascii())
+            .flat_map(|c| c.to_uppercase());
+        const LETTER_SPACING: f32 = 0.3;
+
+        let mut offset = 0.0;
+        for char in text {
+            if let Some(character) = self.text.character(char) {
+                let char_translation = Matrix4::new_translation(&vector!(
+                    offset - character.bounds.0,
+                    -1.0,
+                    0.0
+                ));
+
+                offset += character.size() + LETTER_SPACING;
+                models.push(Model::new(
+                    character.data,
+                    transform * char_translation,
+                    color,
+                ));
+            }
+        }
     }
 }
 

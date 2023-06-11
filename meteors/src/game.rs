@@ -1,10 +1,11 @@
+use std::mem::swap;
 use std::time::Duration;
 
 use bytemuck::bytes_of;
 use float_ord::FloatOrd;
 use instant::Instant;
 use log::debug;
-use nalgebra::{Matrix4, RealField, Rotation3, vector, Vector2, Vector3};
+use nalgebra::{matrix, Matrix4, RealField, Rotation3, vector, Vector2, Vector3};
 use rand::random;
 
 use engine::asset_resource::AssetSourceResource;
@@ -100,7 +101,31 @@ fn collides(a: &Collider, a_pos: &Vec3, b: &Collider, b_pos: &Vec3) -> bool {
     distance < (a.size + b.size)
 }
 
-pub struct GameState {
+pub enum GameState {
+    Empty,
+    InGame(IngameState),
+    GameOver(GameOverState),
+}
+
+impl Default for GameState {
+    fn default() -> Self {
+        GameState::Empty
+    }
+}
+
+impl GameState {
+    fn new_ingame() -> Self {
+        GameState::InGame(Default::default())
+    }
+
+    fn take(&mut self) -> Self {
+        let mut value = GameState::Empty;
+        swap(self, &mut value);
+        value
+    }
+}
+
+pub struct IngameState {
     world: World,
     previous_meteor: Instant,
     time_until_meteor: Duration,
@@ -109,7 +134,7 @@ pub struct GameState {
     restart_timer: Option<(Instant, Duration)>,
 }
 
-impl Default for GameState {
+impl Default for IngameState {
     fn default() -> Self {
         let mut world = World::default()
             .with_component::<Player>()
@@ -128,7 +153,7 @@ impl Default for GameState {
             world.components_mut::<Collider>().put(player, Collider { size: 0.025 });
         }
 
-        GameState {
+        IngameState {
             world,
             previous_meteor: Instant::now(),
             time_until_meteor: Duration::from_secs(3),
@@ -137,6 +162,13 @@ impl Default for GameState {
             restart_timer: None,
         }
     }
+}
+
+pub struct GameOverState {
+    score: u32,
+    world: World,
+    dead_time: Instant,
+    fade_out: Duration,
 }
 
 pub struct GlobalState {
@@ -211,58 +243,81 @@ pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<Surfa
             game.global.calculate_bounds(width, height);
         }
         SurfaceEvent::Draw => {
-            if let Some((time, duration)) = game.state.restart_timer.as_ref() {
-                if time.elapsed() > *duration {
-                    game.state = GameState::default();
-                }
-            }
-
-            // update game state
-            let mut create = vec![];
-            let mut remove = vec![];
-            common_update_world(GameContext {
-                global: &mut game.global,
-                world: &mut game.state.world,
-                create: &mut create,
-                remove: &mut remove,
-            });
-
-            if game.state.previous_meteor.elapsed() >= game.state.time_until_meteor {
-                spawn_meteor(&game.state.world, &game.global, &mut create);
-                game.state.previous_meteor = Instant::now();
-                game.state.time_until_meteor = game.state.meteor_timer;
-                // spawn next meteor 10% sooner to increase difficulty
-                game.state.meteor_timer = Duration::from_secs_f32(game.state.meteor_timer.as_secs_f32() * 0.90);
-            }
-
-            // handle collisions
-            check_collisions_between::<Player, Meteor, _>(&game.state.world, |((player, ..), ..)| {
-                remove.push(player);
-            });
-            check_collisions_between::<Bullet, Meteor, _>(&game.state.world, |((bullet, ..), (meteor, body, collider))| {
-                game.state.score += calculate_score(body.transform.size);
-                remove.push(bullet);
-                remove.push(meteor);
-                split_meteor(body, collider, &mut create);
-            });
-
-            if game.state.restart_timer.is_none() {
-                // restart game in 3 seconds if all players are dead
-                let player_count = View::builder().marked::<Player>().build(&game.state.world).iter().count();
-                if player_count == 0 {
-                    game.state.restart_timer = Some((Instant::now(), Duration::from_secs(3)));
-                }
-            }
-
-            remove_entities(remove, &mut game.state.world);
-            create_entities(create, &mut game.state.world);
-
-            game.global.previous_update = Instant::now();
-
             let mut models = vec![];
 
-            draw_world(&game.state.world, &mut game.graphics, &mut models);
-            draw_score(game.state.score, &game.global, &game.graphics, &mut models);
+            game.state = match game.state.take() {
+                GameState::Empty => GameState::new_ingame(),
+                GameState::InGame(mut state) => {
+                    // update game state
+                    let mut create = vec![];
+                    let mut remove = vec![];
+                    common_update_world(GameContext {
+                        global: &mut game.global,
+                        world: &mut state.world,
+                        create: &mut create,
+                        remove: &mut remove,
+                    });
+
+                    if state.previous_meteor.elapsed() >= state.time_until_meteor {
+                        spawn_meteor(&state.world, &game.global, &mut create);
+                        state.previous_meteor = Instant::now();
+                        state.time_until_meteor = state.meteor_timer;
+                        // spawn next meteor 10% sooner to increase difficulty
+                        state.meteor_timer = Duration::from_secs_f32(state.meteor_timer.as_secs_f32() * 0.90);
+                    }
+
+                    // handle collisions
+                    check_collisions_between::<Player, Meteor, _>(&state.world, |((player, ..), ..)| {
+                        remove.push(player);
+                    });
+                    check_collisions_between::<Bullet, Meteor, _>(&state.world, |((bullet, ..), (meteor, body, collider))| {
+                        state.score += calculate_score(body.transform.size);
+                        remove.push(bullet);
+                        remove.push(meteor);
+                        split_meteor(body, collider, &mut create);
+                    });
+
+                    remove_entities(remove, &mut state.world);
+                    create_entities(create, &mut state.world);
+
+                    draw_world(&state.world, &mut game.graphics, &mut models);
+                    draw_score(state.score, &game.global, &game.graphics, &mut models);
+
+                    // transition to game over state if all players are dead
+                    let player_count = View::builder().marked::<Player>().build(&state.world).iter().count();
+                    if player_count == 0 {
+                        debug!(target:"meteors", "Game over, score: {}", state.score);
+                        GameState::GameOver(GameOverState {
+                            score: state.score,
+                            world: state.world,
+                            dead_time: Instant::now(),
+                            fade_out: Duration::from_secs(3),
+                        })
+                    } else {
+                        GameState::InGame(state)
+                    }
+                }
+                GameState::GameOver(mut state) => {
+                    common_update_world(GameContext {
+                        global: &mut game.global,
+                        world: &mut state.world,
+                        remove: &mut vec![],
+                        create: &mut vec![],
+                    });
+
+                    draw_world(&state.world, &mut game.graphics, &mut models);
+                    draw_score(state.score, &game.global, &game.graphics, &mut models);
+
+                    if state.dead_time.elapsed() > state.fade_out {
+                        debug!(target:"meteors", "Restarting game...");
+                        GameState::new_ingame()
+                    } else {
+                        GameState::GameOver(state)
+                    }
+                }
+            };
+
+            game.global.previous_update = Instant::now();
 
             // setup camera uniform buffer
             let camera_scale = vector!(1.0 / game.global.bounds.x, 1.0 / game.global.bounds.y);

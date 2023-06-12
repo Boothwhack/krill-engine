@@ -150,10 +150,8 @@ impl GameState {
 pub struct IngameState {
     world: World,
     previous_meteor: Instant,
-    //time_until_meteor: Duration,
     meteor_timer: Duration,
     score: u32,
-    restart_timer: Option<(Instant, Duration)>,
 }
 
 impl From<World> for IngameState {
@@ -173,10 +171,8 @@ impl Default for IngameState {
         IngameState {
             world,
             previous_meteor: Instant::now(),
-            //time_until_meteor: Duration::from_secs(3),
             meteor_timer: Duration::from_secs(10),
             score: 0,
-            restart_timer: None,
         }
     }
 }
@@ -370,7 +366,6 @@ pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<Surfa
                     if state.previous_meteor.elapsed() >= state.meteor_timer {
                         spawn_meteor(&state.world, &game.global, &mut create);
                         state.previous_meteor = Instant::now();
-                        //state.time_until_meteor = state.meteor_timer;
                         // spawn next meteor 10% sooner to increase difficulty
                         state.meteor_timer = Duration::from_secs_f32(state.meteor_timer.as_secs_f32() * 0.90);
                     }

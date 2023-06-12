@@ -12,7 +12,7 @@ use engine::asset_resource::AssetSourceResource;
 use engine::assets::source::AssetSource;
 use engine::ecs::world::{EntityId, View, World};
 use engine::events::{Context, ContextWith};
-use engine::render::{Batch, Model, RenderApi};
+use engine::render::{Batch, Color, Model, RenderApi};
 use engine::surface::{Exit, RunnableSurface, SurfaceEvent, SurfaceResource};
 use engine::surface::input::{DeviceEvent, ElementState, VirtualKeyCode};
 use engine::utils::{HList, hlist};
@@ -101,8 +101,30 @@ fn collides(a: &Collider, a_pos: &Vec3, b: &Collider, b_pos: &Vec3) -> bool {
     distance < (a.size + b.size)
 }
 
+fn default_world() -> World {
+    World::default()
+        .with_component::<Player>()
+        .with_component::<Meteor>()
+        .with_component::<Bullet>()
+        .with_component::<Body>()
+        .with_component::<Shape>()
+        .with_component::<Collider>()
+}
+
+fn add_player(world: &mut World) -> EntityId {
+    let player = world.new_entity();
+
+    world.components_mut::<Player>().put(player, Player);
+    world.components_mut::<Body>().put(player, Default::default());
+    world.components_mut::<Shape>().put(player, Shape::Ship);
+    world.components_mut::<Collider>().put(player, Collider { size: 0.025 });
+
+    player
+}
+
 pub enum GameState {
     Empty,
+    MainMenu(MainMenuState),
     InGame(IngameState),
     GameOver(GameOverState),
 }
@@ -114,8 +136,8 @@ impl Default for GameState {
 }
 
 impl GameState {
-    fn new_ingame() -> Self {
-        GameState::InGame(Default::default())
+    fn new() -> Self {
+        GameState::MainMenu(Default::default())
     }
 
     fn take(&mut self) -> Self {
@@ -128,35 +150,30 @@ impl GameState {
 pub struct IngameState {
     world: World,
     previous_meteor: Instant,
-    time_until_meteor: Duration,
+    //time_until_meteor: Duration,
     meteor_timer: Duration,
     score: u32,
     restart_timer: Option<(Instant, Duration)>,
 }
 
+impl From<World> for IngameState {
+    fn from(value: World) -> Self {
+        IngameState {
+            world: value,
+            ..Default::default()
+        }
+    }
+}
+
 impl Default for IngameState {
     fn default() -> Self {
-        let mut world = World::default()
-            .with_component::<Player>()
-            .with_component::<Meteor>()
-            .with_component::<Bullet>()
-            .with_component::<Body>()
-            .with_component::<Shape>()
-            .with_component::<Collider>();
-
-        {
-            let player = world.new_entity();
-
-            world.components_mut::<Player>().put(player, Player);
-            world.components_mut::<Body>().put(player, Body::default());
-            world.components_mut::<Shape>().put(player, Shape::Ship);
-            world.components_mut::<Collider>().put(player, Collider { size: 0.025 });
-        }
+        let mut world = default_world();
+        add_player(&mut world);
 
         IngameState {
             world,
             previous_meteor: Instant::now(),
-            time_until_meteor: Duration::from_secs(3),
+            //time_until_meteor: Duration::from_secs(3),
             meteor_timer: Duration::from_secs(10),
             score: 0,
             restart_timer: None,
@@ -175,6 +192,38 @@ pub struct GlobalState {
     input_state: InputState,
     previous_update: Instant,
     bounds: Vec2,
+}
+
+pub struct MainMenuState {
+    world: World,
+    fade_out: Option<(Instant, Duration)>,
+}
+
+impl Default for MainMenuState {
+    fn default() -> Self {
+        let mut world = default_world();
+        add_player(&mut world);
+
+        const START_METEOR_SIZE:f32 = 1.5;
+        let start_meteor = world.new_entity();
+        world.components_mut::<Meteor>().put(start_meteor, Meteor);
+        world.components_mut::<Body>().put(start_meteor, Body {
+            transform: Transform {
+                position: vector!(4.5, -1.8, 0.0),
+                size: START_METEOR_SIZE,
+                rotation: 0.0,
+            },
+            angular_velocity: 0.2,
+            ..Default::default()
+        });
+        world.components_mut::<Shape>().put(start_meteor, Shape::Meteor);
+        world.components_mut::<Collider>().put(start_meteor, Collider { size: START_METEOR_SIZE*0.75 });
+
+        MainMenuState {
+            world,
+            fade_out: None,
+        }
+    }
 }
 
 impl Default for GlobalState {
@@ -246,7 +295,67 @@ pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<Surfa
             let mut models = vec![];
 
             game.state = match game.state.take() {
-                GameState::Empty => GameState::new_ingame(),
+                GameState::Empty => GameState::new(),
+                GameState::MainMenu(mut state) => {
+                    let mut create = vec![];
+                    let mut remove = vec![];
+                    common_update_world(GameContext {
+                        global: &mut game.global,
+                        world: &mut state.world,
+                        create: &mut create,
+                        remove: &mut remove,
+                    });
+                    let mut hit_start_meteor = false;
+                    check_collisions_between::<Bullet, Meteor, _>(&state.world, |((bullet, bullet_body, _), (meteor, meteor_body, meteor_collider))| {
+                        hit_start_meteor = true;
+                        let velocity = vector!(0.0, 1.8, 0.0);
+                        split_meteor(meteor_body, meteor_collider, Rotation3::from_euler_angles(0.0, 0.0, bullet_body.transform.rotation) * velocity, &mut create);
+                        remove.push(meteor);
+                        remove.push(bullet);
+                    });
+                    remove_entities(remove, &mut state.world);
+                    create_entities(create, &mut state.world);
+
+                    draw_world(&state.world, &mut game.graphics, &mut models);
+                    draw_logo(&game.global, &game.graphics, &mut models);
+
+                    game.graphics.draw_arrow_keys(
+                        Matrix4::new_scaling(0.3).append_translation(&vector!(-4.5, -2.0, 0.0)),
+                        FOREGROUND_COLOR,
+                        &mut models,
+                    );
+                    game.graphics.draw_text(
+                        "MOVE",
+                        Matrix4::new_scaling(0.3).append_translation(&vector!(-5.55, -2.8, 0.0)),
+                        FOREGROUND_COLOR,
+                        &mut models,
+                    );
+
+                    game.graphics.draw_spacebar(
+                        Matrix4::new_scaling(0.3).append_translation(&vector!(0.0, -2.0, 0.0)),
+                        FOREGROUND_COLOR,
+                        &mut models,
+                    );
+                    game.graphics.draw_text(
+                        "SHOOT",
+                        Matrix4::new_scaling(0.3).append_translation(&vector!(-1.4, -2.8, 0.0)),
+                        FOREGROUND_COLOR,
+                        &mut models,
+                    );
+
+                    game.graphics.draw_text(
+                        "DESTROY",
+                        Matrix4::new_scaling(0.3).append_translation(&vector!(2.6, -2.8, 0.0)),
+                        FOREGROUND_COLOR,
+                        &mut models,
+                    );
+
+                    if hit_start_meteor {
+                        GameState::InGame(IngameState::from(state.world))
+                    } else {
+                        GameState::MainMenu(state)
+                    }
+                }
                 GameState::InGame(mut state) => {
                     // update game state
                     let mut create = vec![];
@@ -258,10 +367,10 @@ pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<Surfa
                         remove: &mut remove,
                     });
 
-                    if state.previous_meteor.elapsed() >= state.time_until_meteor {
+                    if state.previous_meteor.elapsed() >= state.meteor_timer {
                         spawn_meteor(&state.world, &game.global, &mut create);
                         state.previous_meteor = Instant::now();
-                        state.time_until_meteor = state.meteor_timer;
+                        //state.time_until_meteor = state.meteor_timer;
                         // spawn next meteor 10% sooner to increase difficulty
                         state.meteor_timer = Duration::from_secs_f32(state.meteor_timer.as_secs_f32() * 0.90);
                     }
@@ -274,7 +383,7 @@ pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<Surfa
                         state.score += calculate_score(body.transform.size);
                         remove.push(bullet);
                         remove.push(meteor);
-                        split_meteor(body, collider, &mut create);
+                        split_meteor(body, collider, Vec3::zeros(), &mut create);
                     });
 
                     remove_entities(remove, &mut state.world);
@@ -286,7 +395,7 @@ pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<Surfa
                     // transition to game over state if all players are dead
                     let player_count = View::builder().marked::<Player>().build(&state.world).iter().count();
                     if player_count == 0 {
-                        debug!(target:"meteors", "Game over, score: {}", state.score);
+                        debug!(target: "meteors", "Game over, score: {}", state.score);
                         GameState::GameOver(GameOverState {
                             score: state.score,
                             world: state.world,
@@ -310,7 +419,7 @@ pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<Surfa
 
                     if state.dead_time.elapsed() > state.fade_out {
                         debug!(target:"meteors", "Restarting game...");
-                        GameState::new_ingame()
+                        GameState::InGame(Default::default())
                     } else {
                         GameState::GameOver(state)
                     }
@@ -548,7 +657,7 @@ fn spawn_meteor(world: &World, global: &GlobalState, create: &mut Vec<(Type, Com
     }));
 }
 
-fn split_meteor(body: &Body, collider: &Collider, create: &mut Vec<(Type, Components)>) {
+fn split_meteor(body: &Body, collider: &Collider, velocity: Vec3, create: &mut Vec<(Type, Components)>) {
     const SPLIT_MIN_SIZE: f32 = 0.5;
     const SPLIT_SIZE: f32 = 0.6;
     const SPLIT_ANGLE: f32 = 0.5;
@@ -563,6 +672,7 @@ fn split_meteor(body: &Body, collider: &Collider, create: &mut Vec<(Type, Compon
             let rotation = random::<f32>() * f32::pi() * 2.0;
             let angle_random = random::<f32>() * 0.5 - 0.25;
             let spin_direction = (random::<f32>() - 0.5).signum();
+            let general_velocity = velocity + body.velocity * SPLIT_VELOCITY;
             create.push((Type::Meteor, Components {
                 body: Some(Body {
                     transform: Transform {
@@ -570,7 +680,7 @@ fn split_meteor(body: &Body, collider: &Collider, create: &mut Vec<(Type, Compon
                         rotation,
                         size: body.transform.size * size_multiplier,
                     },
-                    velocity: Rotation3::from_axis_angle(&Vec3::z_axis(), sign * SPLIT_ANGLE + angle_random) * body.velocity * SPLIT_VELOCITY,
+                    velocity: Rotation3::from_axis_angle(&Vec3::z_axis(), sign * SPLIT_ANGLE + angle_random) * general_velocity,
                     angular_velocity: body.angular_velocity * spin_direction + spin_direction * (random::<f32>() * 0.2 + 0.1),
                     ..body.clone()
                 }),
@@ -624,4 +734,19 @@ fn draw_score(score: u32, global: &GlobalState, graphics: &Graphics, models: &mu
         0.0,
     )) * Matrix4::new_scaling(FONT_SIZE);
     graphics.draw_text(&score, text_translation, FOREGROUND_COLOR, models);
+}
+
+fn draw_logo(global: &GlobalState, graphics: &Graphics, models: &mut Vec<Model>) {
+    let skew = matrix![
+        1.0, 0.0, 0.0, 0.0;
+        0.0, 1.0, 0.0, 0.0;
+        0.0, 0.0, 1.0, 0.0;
+        0.0, 0.1, 0.0, 1.0];
+    const LOGO_SIZE: f32 = 0.8;
+    // approximately centered text
+    let transform = skew
+        .prepend_translation(&vector!(-6.2, 0.0, 0.0)) // center text for skew effect
+        .append_nonuniform_scaling(&vector!(1.0 * LOGO_SIZE, 1.2 * LOGO_SIZE, 1.0))
+        .append_translation(&vector!(0.0, 5.0, 0.0));
+    graphics.draw_text("METEORS", transform, FOREGROUND_COLOR, models);
 }

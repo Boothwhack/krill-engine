@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use std::mem::size_of;
+
 use bytemuck::cast_slice;
 use bytemuck_derive::{Pod, Zeroable};
-use nalgebra::{Matrix4, point, Point3, RealField, vector};
+use nalgebra::{Matrix4, point, Point3, RealField, Rotation3, vector};
 use rand::{Rng, SeedableRng};
 use rand::distributions::Standard;
 use rand::rngs::StdRng;
@@ -35,7 +36,8 @@ pub struct Graphics {
     pub ship_geometry: Handle<Geometry>,
     pub meteor_geometry: Handle<Geometry>,
     pub bullet_geometry: Handle<Geometry>,
-    pub play_icon_geometry: Handle<Geometry>,
+    pub arrow_geometries: [Handle<Geometry>; 4],
+    pub spacebar_geometry: Handle<Geometry>,
     pub text: Text,
 }
 
@@ -109,14 +111,23 @@ impl Graphics {
             BULLET_INDICES.to_vec(),
         );
 
-        let play_icon_geometry = render.new_geometry(
-            cast_slice(&[
-                Vertex::new(point!(-0.02, 0.02, 0.0), Color::WHITE),
-                Vertex::new(point!(-0.02, -0.02, 0.0), Color::WHITE),
-                Vertex::new(point!(0.02, 0.0, 0.0), Color::WHITE),
-            ]).to_vec(),
+        let arrow_geometries = [0.0, 1.0, 2.0, 3.0].map(|i| {
+            render.new_geometry(
+                cast_slice(&ARROW_VERTICES.map(|v| {
+                    Vertex {
+                        position: Rotation3::from_euler_angles(0.0, 0.0, (i * 90.0f32).to_radians()).transform_point(&v.position),
+                        ..v
+                    }
+                })).to_vec(),
+                vertex_format.clone(),
+                generate_triangles_indices(ARROW_VERTICES.len() as _),
+            )
+        });
+
+        let spacebar_geometry = render.new_geometry(
+            cast_slice(&SPACEBAR_VERTICES).to_vec(),
             vertex_format.clone(),
-            vec![0, 1, 2],
+            generate_triangles_indices(SPACEBAR_VERTICES.len() as _),
         );
 
         Graphics {
@@ -126,7 +137,8 @@ impl Graphics {
             ship_geometry,
             meteor_geometry,
             bullet_geometry,
-            play_icon_geometry,
+            arrow_geometries,
+            spacebar_geometry,
             text: Text::new(render, &vertex_format),
         }
     }
@@ -164,6 +176,37 @@ impl Graphics {
             }
         }
     }
+
+    pub fn draw_arrow_keys(&self, transform: Matrix4<f32>, color: Color, models: &mut Vec<Model>) {
+        models.push(Model::new(
+            self.arrow_geometries[0],
+            transform.prepend_translation(&vector!(0.0, 2.3, 0.0)),
+            color,
+        ));
+        models.push(Model::new(
+            self.arrow_geometries[1],
+            transform.prepend_translation(&vector!(-2.3, 0.0, 0.0)),
+            color,
+        ));
+        models.push(Model::new(
+            self.arrow_geometries[2],
+            transform.prepend_translation(&vector!(0.0, 0.0, 0.0)),
+            color,
+        ));
+        models.push(Model::new(
+            self.arrow_geometries[3],
+            transform.prepend_translation(&vector!(2.3, 0.0, 0.0)),
+            color,
+        ));
+    }
+
+    pub fn draw_spacebar(&self, transform: Matrix4<f32>, color: Color, models: &mut Vec<Model>) {
+        models.push(Model::new(
+            self.spacebar_geometry,
+            transform,
+            color,
+        ));
+    }
 }
 
 pub fn generate_triangle_strip_indices(vertex_count: usize) -> Vec<u16> {
@@ -172,6 +215,10 @@ pub fn generate_triangle_strip_indices(vertex_count: usize) -> Vec<u16> {
     } else {
         vec![]
     }
+}
+
+pub fn generate_triangles_indices(vertex_count: u16) -> Vec<u16> {
+    (0..vertex_count).collect()
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -204,6 +251,92 @@ const BULLET_VERTICES: [Vertex; 4] = [
 const BULLET_INDICES: [u16; 6] = [
     0, 1, 2,
     1, 2, 3,
+];
+
+const ARROW_HEIGHT: f32 = 0.3;
+const ARROW_WIDTH: f32 = 0.3;
+const ARROW_VERTICES: [Vertex; 36] = [
+    Vertex { position: point!(-0.5, -ARROW_HEIGHT, 0.0), color: Color::WHITE },
+    Vertex { position: point!(-0.5, -ARROW_HEIGHT + ARROW_WIDTH, 0.0), color: Color::WHITE },
+    Vertex { position: point!(0.0, ARROW_HEIGHT - ARROW_WIDTH, 0.0), color: Color::WHITE },
+    Vertex { position: point!(-0.5, -ARROW_HEIGHT + ARROW_WIDTH, 0.0), color: Color::WHITE },
+    Vertex { position: point!(0.0, ARROW_HEIGHT - ARROW_WIDTH, 0.0), color: Color::WHITE },
+    Vertex { position: point!(0.0, ARROW_HEIGHT, 0.0), color: Color::WHITE },
+    Vertex { position: point!(0.0, ARROW_HEIGHT - ARROW_WIDTH, 0.0), color: Color::WHITE },
+    Vertex { position: point!(0.0, ARROW_HEIGHT, 0.0), color: Color::WHITE },
+    Vertex { position: point!(0.5, -ARROW_HEIGHT, 0.0), color: Color::WHITE },
+    Vertex { position: point!(0.0, ARROW_HEIGHT, 0.0), color: Color::WHITE },
+    Vertex { position: point!(0.5, -ARROW_HEIGHT, 0.0), color: Color::WHITE },
+    Vertex { position: point!(0.5, -ARROW_HEIGHT + ARROW_WIDTH, 0.0), color: Color::WHITE },
+    Vertex { position: point!(-1.0, 1.0, 0.0), color: Color::WHITE },
+    Vertex { position: point!(-0.8, 0.8, 0.0), color: Color::WHITE },
+    Vertex { position: point!(1.0, 1.0, 0.0), color: Color::WHITE },
+    Vertex { position: point!(-0.8, 0.8, 0.0), color: Color::WHITE },
+    Vertex { position: point!(1.0, 1.0, 0.0), color: Color::WHITE },
+    Vertex { position: point!(0.8, 0.8, 0.0), color: Color::WHITE },
+    Vertex { position: point!(1.0, 1.0, 0.0), color: Color::WHITE },
+    Vertex { position: point!(0.8, 0.8, 0.0), color: Color::WHITE },
+    Vertex { position: point!(1.0, -1.0, 0.0), color: Color::WHITE },
+    Vertex { position: point!(0.8, 0.8, 0.0), color: Color::WHITE },
+    Vertex { position: point!(1.0, -1.0, 0.0), color: Color::WHITE },
+    Vertex { position: point!(0.8, -0.8, 0.0), color: Color::WHITE },
+    Vertex { position: point!(1.0, -1.0, 0.0), color: Color::WHITE },
+    Vertex { position: point!(0.8, -0.8, 0.0), color: Color::WHITE },
+    Vertex { position: point!(-1.0, -1.0, 0.0), color: Color::WHITE },
+    Vertex { position: point!(0.8, -0.8, 0.0), color: Color::WHITE },
+    Vertex { position: point!(-1.0, -1.0, 0.0), color: Color::WHITE },
+    Vertex { position: point!(-0.8, -0.8, 0.0), color: Color::WHITE },
+    Vertex { position: point!(-1.0, -1.0, 0.0), color: Color::WHITE },
+    Vertex { position: point!(-0.8, -0.8, 0.0), color: Color::WHITE },
+    Vertex { position: point!(-1.0, 1.0, 0.0), color: Color::WHITE },
+    Vertex { position: point!(-0.8, -0.8, 0.0), color: Color::WHITE },
+    Vertex { position: point!(-1.0, 1.0, 0.0), color: Color::WHITE },
+    Vertex { position: point!(-0.8, 0.8, 0.0), color: Color::WHITE },
+];
+const SPACEBAR_VERTICES: [Vertex; 42] = [
+    Vertex {position: point!(-0.6, 0.3, 0.0), color: Color::WHITE},
+    Vertex {position: point!(-0.4, 0.3, 0.0), color: Color::WHITE},
+    Vertex {position: point!(-0.6, -0.3, 0.0), color: Color::WHITE},
+    Vertex {position: point!(-0.4, 0.3, 0.0), color: Color::WHITE},
+    Vertex {position: point!(-0.6, -0.3, 0.0), color: Color::WHITE},
+    Vertex {position: point!(-0.4, -0.1, 0.0), color: Color::WHITE},
+    Vertex {position: point!(-0.6, -0.3, 0.0), color: Color::WHITE},
+    Vertex {position: point!(-0.4, -0.1, 0.0), color: Color::WHITE},
+    Vertex {position: point!(0.6, -0.3, 0.0), color: Color::WHITE},
+    Vertex {position: point!(-0.4, -0.1, 0.0), color: Color::WHITE},
+    Vertex {position: point!(0.6, -0.3, 0.0), color: Color::WHITE},
+    Vertex {position: point!(0.4, -0.1, 0.0), color: Color::WHITE},
+    Vertex {position: point!(0.6, -0.3, 0.0), color: Color::WHITE},
+    Vertex {position: point!(0.4, -0.1, 0.0), color: Color::WHITE},
+    Vertex {position: point!(0.6, 0.3, 0.0), color: Color::WHITE},
+    Vertex {position: point!(0.4, -0.1, 0.0), color: Color::WHITE},
+    Vertex {position: point!(0.6, 0.3, 0.0), color: Color::WHITE},
+    Vertex {position: point!(0.4, 0.3, 0.0), color: Color::WHITE},
+
+    Vertex { position: point!(-3.0, 1.0, 0.0), color: Color::WHITE },
+    Vertex { position: point!(-2.8, 0.8, 0.0), color: Color::WHITE },
+    Vertex { position: point!(3.0, 1.0, 0.0), color: Color::WHITE },
+    Vertex { position: point!(-2.8, 0.8, 0.0), color: Color::WHITE },
+    Vertex { position: point!(3.0, 1.0, 0.0), color: Color::WHITE },
+    Vertex { position: point!(2.8, 0.8, 0.0), color: Color::WHITE },
+    Vertex { position: point!(3.0, 1.0, 0.0), color: Color::WHITE },
+    Vertex { position: point!(2.8, 0.8, 0.0), color: Color::WHITE },
+    Vertex { position: point!(3.0, -1.0, 0.0), color: Color::WHITE },
+    Vertex { position: point!(2.8, 0.8, 0.0), color: Color::WHITE },
+    Vertex { position: point!(3.0, -1.0, 0.0), color: Color::WHITE },
+    Vertex { position: point!(2.8, -0.8, 0.0), color: Color::WHITE },
+    Vertex { position: point!(3.0, -1.0, 0.0), color: Color::WHITE },
+    Vertex { position: point!(2.8, -0.8, 0.0), color: Color::WHITE },
+    Vertex { position: point!(-3.0, -1.0, 0.0), color: Color::WHITE },
+    Vertex { position: point!(2.8, -0.8, 0.0), color: Color::WHITE },
+    Vertex { position: point!(-3.0, -1.0, 0.0), color: Color::WHITE },
+    Vertex { position: point!(-2.8, -0.8, 0.0), color: Color::WHITE },
+    Vertex { position: point!(-3.0, -1.0, 0.0), color: Color::WHITE },
+    Vertex { position: point!(-2.8, -0.8, 0.0), color: Color::WHITE },
+    Vertex { position: point!(-3.0, 1.0, 0.0), color: Color::WHITE },
+    Vertex { position: point!(-2.8, -0.8, 0.0), color: Color::WHITE },
+    Vertex { position: point!(-3.0, 1.0, 0.0), color: Color::WHITE },
+    Vertex { position: point!(-2.8, 0.8, 0.0), color: Color::WHITE },
 ];
 
 fn generate_meteor_geometry() -> Vec<Vertex> {

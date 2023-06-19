@@ -6,9 +6,10 @@ use wgpu::RenderPassDescriptor;
 
 use utils::{CompactList, Handle};
 
-use crate::{BufferUsages, Color, DeviceContext, Frame, MaybeRef, MutableHandle, SurfaceContext, TextureFormat};
+use crate::{BufferUsages, Color, DeviceContext, Frame, MutableHandle, SurfaceContext, TextureFormat};
 use crate::geometry::{Geometry, VertexFormat};
 use crate::material::{Counter, Material, MaterialDefinition, PipelineDefinition, UniformDefinition};
+use crate::maybe::MaybeRef;
 use crate::uniform::{Uniform, UniformInstance, UniformInstanceEntry};
 use crate::vecbuf::VecBuf;
 

@@ -2,8 +2,9 @@ use std::cell::{RefCell, RefMut};
 
 use utils::Handle;
 
-use crate::{BufferUsages, DeviceContext, MaybeOwned, VecBuf};
+use crate::{BufferUsages, DeviceContext, VecBuf};
 use crate::material::{UniformEntryDefinition, UniformEntryTypeDefinition};
+use crate::maybe::MaybeOwned;
 use crate::render_api::DeviceResources;
 
 pub struct Uniform {

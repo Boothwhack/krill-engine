@@ -21,6 +21,7 @@ mod render_api;
 pub mod uniform;
 mod maybe;
 mod wgpu_context;
+pub mod shader;
 
 pub type TextureFormat = wgpu::TextureFormat;
 

@@ -12,13 +12,13 @@ use engine::asset_resource::AssetSourceResource;
 use engine::assets::source::AssetSource;
 use engine::ecs::world::{EntityId, View, World};
 use engine::events::{Context, ContextWith};
-use engine::render::{Batch, Color, Model, RenderApi};
+use engine::render::{Batch, RenderApi};
 use engine::surface::{Exit, RunnableSurface, SurfaceEvent, SurfaceResource};
 use engine::surface::input::{DeviceEvent, ElementState, VirtualKeyCode};
 use engine::utils::{HList, hlist};
 use engine::wgpu_render::WGPURenderResource;
 
-use crate::graphics::{BACKGROUND_COLOR, FOREGROUND_COLOR, Graphics, Shape};
+use crate::graphics::{BACKGROUND_COLOR, FOREGROUND_COLOR, Graphics, Shape, ModelProperties, GameModel};
 
 #[derive(Debug, Default)]
 struct InputState {
@@ -436,11 +436,14 @@ pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<Surfa
 
             let mut drawer = render.new_drawer(&frame);
 
-            let mut batch = Batch::new(game.graphics.material, vec![&game.graphics.camera_uniform]);
+            let mut batch = Batch::new(&game.graphics.material, vec![&game.graphics.camera_uniform]);
             batch.clear(BACKGROUND_COLOR);
             batch.models(models);
 
-            drawer.submit_batch(batch);
+            drawer.submit_batch(&ModelProperties {
+                transform: view_matrix,
+                color: FOREGROUND_COLOR,
+            }, batch);
             drawer.finish();
 
             render.present_frame(frame);
@@ -707,7 +710,7 @@ fn check_collisions_between<A: 'static, B: 'static, F>(world: &World, f: F)
     ).for_each(f);
 }
 
-fn draw_world(world: &World, graphics: &Graphics, models: &mut Vec<Model>) {
+fn draw_world(world: &World, graphics: &Graphics, models: &mut Vec<GameModel>) {
     // collect shapes from the ecs (player, meteors and bullets)
     let shapes = View::builder()
         .required::<Shape>()
@@ -718,7 +721,7 @@ fn draw_world(world: &World, graphics: &Graphics, models: &mut Vec<Model>) {
     }
 }
 
-fn draw_score(score: u32, global: &GlobalState, graphics: &Graphics, models: &mut Vec<Model>) {
+fn draw_score(score: u32, global: &GlobalState, graphics: &Graphics, models: &mut Vec<GameModel>) {
     const SAFE_AREA: Vec2 = Vec2::new(0.5, 0.5);
     const FONT_SIZE: f32 = 0.5;
 
@@ -731,7 +734,7 @@ fn draw_score(score: u32, global: &GlobalState, graphics: &Graphics, models: &mu
     graphics.draw_text(&score, text_translation, FOREGROUND_COLOR, models);
 }
 
-fn draw_logo(global: &GlobalState, graphics: &Graphics, models: &mut Vec<Model>) {
+fn draw_logo(global: &GlobalState, graphics: &Graphics, models: &mut Vec<GameModel>) {
     let skew = matrix![
         1.0, 0.0, 0.0, 0.0;
         0.0, 1.0, 0.0, 0.0;

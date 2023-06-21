@@ -1,18 +1,16 @@
 use std::cell::{RefCell, RefMut};
-use std::collections::HashMap;
 use std::ops::DerefMut;
 use std::str::FromStr;
+use bytemuck::cast_slice;
 
-use bytemuck::{cast_slice, from_bytes_mut};
-use nalgebra::Point3;
 use serde::{Deserialize, Deserializer};
 use thiserror::Error;
-use wgpu::VertexFormat;
 
 use utils::Handle;
-
-use crate::{BufferUsages, Color, DeviceContext, Model, MutableHandle, SurfaceContext, VecBuf};
 use crate::render_api::DeviceResources;
+
+use crate::{BufferUsages, DeviceContext, Model, MutableHandle, SurfaceContext, VecBuf};
+use crate::shader::{Shader, VertexFormat, VertexMapper};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -91,17 +89,17 @@ impl FromStr for AttributeType {
     }
 }
 
-impl Into<VertexFormat> for AttributeType {
-    fn into(self) -> VertexFormat {
+impl Into<wgpu::VertexFormat> for AttributeType {
+    fn into(self) -> wgpu::VertexFormat {
         match self {
-            AttributeType::Float32(1) => VertexFormat::Float32,
-            AttributeType::Float32(2) => VertexFormat::Float32x2,
-            AttributeType::Float32(3) => VertexFormat::Float32x3,
-            AttributeType::Float32(4) => VertexFormat::Float32x4,
-            AttributeType::Float64(1) => VertexFormat::Float64,
-            AttributeType::Float64(2) => VertexFormat::Float64x2,
-            AttributeType::Float64(3) => VertexFormat::Float64x3,
-            AttributeType::Float64(4) => VertexFormat::Float64x4,
+            AttributeType::Float32(1) => wgpu::VertexFormat::Float32,
+            AttributeType::Float32(2) => wgpu::VertexFormat::Float32x2,
+            AttributeType::Float32(3) => wgpu::VertexFormat::Float32x3,
+            AttributeType::Float32(4) => wgpu::VertexFormat::Float32x4,
+            AttributeType::Float64(1) => wgpu::VertexFormat::Float64,
+            AttributeType::Float64(2) => wgpu::VertexFormat::Float64x2,
+            AttributeType::Float64(3) => wgpu::VertexFormat::Float64x3,
+            AttributeType::Float64(4) => wgpu::VertexFormat::Float64x4,
 
             _ => panic!("invalid input type")
         }
@@ -178,21 +176,10 @@ pub enum UniformObjectFieldFormat {
     F32x4x4
 }
 
-pub struct PipelineDefinition {
-    pub shader_modules: Vec<String>,
-    pub vertex_shader: Shader,
-    pub fragment_shader: Shader,
-    pub attribute_locations: HashMap<String, wgpu::ShaderLocation>,
-}
-
-pub struct Shader {
-    pub index: usize,
-    pub entrypoint: String,
-}
-
 /// Represents a vertex format and render pipeline. Contains any temporary cache resources that are
 /// used when rendering [Geometry] with this material.
-pub struct Material {
+pub struct Material<S: Shader> {
+    shader: S,
     pipeline: wgpu::RenderPipeline,
     bind_groups: Vec<Handle<wgpu::BindGroupLayout>>,
     cache: RefCell<MaterialCache>,
@@ -203,25 +190,22 @@ pub struct Counter {
     pub indices: u16,
 }
 
-impl Material {
-    pub fn new(device: &DeviceContext, resources: &DeviceResources, surface: &SurfaceContext, definition: MaterialDefinition, pipeline: PipelineDefinition) -> Material {
+impl<S: Shader> Material<S> {
+    pub(crate) fn new(shader: S, device: &DeviceContext, resources: &DeviceResources, surface: &SurfaceContext) -> Self {
+        let definition = shader.shader_definition();
         let bind_groups = definition.uniforms.iter()
             .map(|name| resources.uniforms.get(name).expect(&format!("uniform: {}", name)).layout)
             .collect();
-        let pipeline = device.create_render_pipeline(resources, surface, definition, pipeline);
+        let pipeline = device.create_render_pipeline(resources, surface, definition, S::Format::describe());
         Material {
             pipeline,
             bind_groups,
-            cache: RefCell::new(MaterialCache {
-                vertex_buffer: device.create_buffer(0, BufferUsages::VERTEX | BufferUsages::COPY_DST),
-                index_buffer: device.create_buffer(0, BufferUsages::INDEX | BufferUsages::COPY_DST),
-                vertex_staging_buffer: vec![],
-                index_staging_buffer: vec![],
-            }),
+            shader,
+            cache: RefCell::new(MaterialCache::new(device)),
         }
     }
 
-    pub fn cache_models(&self, device: &DeviceContext, resources: &DeviceResources, models: &[Model]) -> Counter {
+    pub fn cache_models(&self, device: &DeviceContext, resources: &DeviceResources, models: &[Model<S::Input>]) -> Counter {
         let mut index_counter = 0;
         let mut vertex_counter = 0;
 
@@ -235,36 +219,15 @@ impl Material {
 
             let vertex_offset = cache.vertex_staging_buffer.len();
 
-            cache.vertex_staging_buffer.extend_from_slice(&geometry.vertex_data);
+            cache.vertex_staging_buffer.extend_from_slice(&geometry.data);
             cache.index_staging_buffer.extend_from_slice(&geometry.indices);
 
-            // For now the vertex data is simply copied to the staging buffer and
-            // transformations are only applied to position attributes using the transform
-            // matrix. This will be replaced with a proper system to convert the geometry data
-            // into the vertex format the material is expecting at a later time.
-            let vertices = cache.vertex_staging_buffer[vertex_offset..vertex_offset + geometry.vertex_data.len()]
-                .chunks_exact_mut(geometry.vertex_format.vertex_size());
-            let vertex_count = vertices.len();
-            for vertex in vertices {
-                let mut offset = 0;
-                for attrib in geometry.vertex_format.attributes() {
-                    let size = attrib.typ.size();
-                    let attrib_data = &mut vertex[offset..offset + size];
-
-                    match attrib.semantics {
-                        AttributeSemantics::Position { transform: PositionTransformation::Model } => {
-                            let position: &mut Point3<f32> = from_bytes_mut(attrib_data);
-                            *position = model.transform.transform_point(position);
-                        }
-                        AttributeSemantics::Color => {
-                            let color: &mut Color = from_bytes_mut(attrib_data);
-                            *color *= model.color;
-                        }
-                        _ => {}
-                    }
-
-                    offset += size;
-                }
+            // pass each vertex through the shader vertex mapper
+            let vertex_count = geometry.data.len() / geometry.format.vertex_size();
+            let mapper = S::Format::mapper_for_format(&geometry.format)
+                .expect("shader is unable to handle geometry");
+            for vertex in mapper.vertices(&mut cache.vertex_staging_buffer[vertex_offset..vertex_offset + geometry.data.len()], &geometry.format) {
+                self.shader.process_vertex(&model.input, vertex);
             }
 
             // Update index offset
@@ -277,7 +240,7 @@ impl Material {
             index_counter += geometry.indices.len();
         }
 
-        vertex_buffer.upload(0, cast_slice(&cache.vertex_staging_buffer));
+        vertex_buffer.upload(0, &cache.vertex_staging_buffer);
         index_buffer.upload(0, cast_slice(&cache.index_staging_buffer));
         cache.vertex_staging_buffer.clear();
         cache.index_staging_buffer.clear();
@@ -302,4 +265,15 @@ pub(crate) struct MaterialCache {
     pub(crate) index_buffer: VecBuf,
     pub(crate) vertex_staging_buffer: Vec<u8>,
     pub(crate) index_staging_buffer: Vec<u16>,
+}
+
+impl MaterialCache {
+    fn new(device: &DeviceContext) -> Self {
+        MaterialCache {
+            vertex_buffer: device.create_buffer(0, BufferUsages::COPY_DST | BufferUsages::VERTEX),
+            index_buffer: device.create_buffer(0, BufferUsages::COPY_DST | BufferUsages::INDEX),
+            vertex_staging_buffer: vec![],
+            index_staging_buffer: vec![],
+        }
+    }
 }

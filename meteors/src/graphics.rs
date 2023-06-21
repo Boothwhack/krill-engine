@@ -1,7 +1,9 @@
 use std::collections::HashMap;
+use std::iter::Map;
 use std::mem::size_of;
+use std::slice::ChunksExactMut;
 
-use bytemuck::cast_slice;
+use bytemuck::{cast_slice, from_bytes_mut};
 use bytemuck_derive::{Pod, Zeroable};
 use nalgebra::{Matrix4, point, Point3, RealField, Rotation3, vector};
 use rand::{Rng, SeedableRng};
@@ -9,12 +11,86 @@ use rand::distributions::Standard;
 use rand::rngs::StdRng;
 
 use engine::render::{BufferUsages, Color, Handle, Model, RenderApi, VecBuf};
-use engine::render::geometry::{Geometry, VertexFormat};
-use engine::render::material::{AttributeDefinition, AttributeSemantics, AttributeType, Material, MaterialDefinition, PipelineDefinition, Shader, UniformDefinition, UniformEntryDefinition, UniformEntryTypeDefinition, UniformVisibility};
+use engine::render::geometry::{Geometry, GeometryFormat};
+use engine::render::material::{AttributeDefinition, AttributeSemantics, AttributeType, Material, UniformDefinition, UniformEntryDefinition, UniformEntryTypeDefinition, UniformVisibility};
+use engine::render::shader::{Shader, ShaderDefinition, ShaderStage, VertexFormat, VertexMapper};
 use engine::render::uniform::{UniformInstance, UniformInstanceEntry};
 
 use crate::game::Transform;
 use crate::text::Text;
+
+pub struct GameShader;
+
+pub struct ModelProperties {
+    pub transform: Matrix4<f32>,
+    pub color: Color,
+}
+
+impl ModelProperties {
+    pub fn new(transform: Matrix4<f32>, color: Color) -> Self {
+        Self { transform, color }
+    }
+}
+
+pub type GameModel = Model<ModelProperties>;
+
+impl Shader for GameShader {
+    type Input = ModelProperties;
+    type Format = GameVertexFormat;
+
+    fn process_vertex(&self, input: &Self::Input, vertex: &mut Vertex) {
+        vertex.position = input.transform.transform_point(&vertex.position);
+        vertex.color *= input.color;
+    }
+
+    fn shader_definition(&self) -> ShaderDefinition {
+        ShaderDefinition {
+            shader_modules: vec![include_str!("assets/game.wgsl").to_owned()],
+            vertex_shader: ShaderStage { module: 0, entrypoint: "vs_main".to_owned() },
+            fragment_shader: ShaderStage { module: 0, entrypoint: "fs_main".to_owned() },
+            attribute_locations: HashMap::from([
+                ("position".to_owned(), 0),
+                ("color".to_owned(), 1),
+            ]),
+            uniforms: vec!["camera".to_owned()],
+        }
+    }
+}
+
+pub struct GameVertexFormat;
+
+impl VertexFormat for GameVertexFormat {
+    type Vertex<'a> = &'a mut Vertex;
+    type Mapper = Self;
+
+    fn mapper_for_format(_format: &GeometryFormat) -> Option<Self> {
+        Some(Self)
+    }
+
+    fn describe() -> Vec<AttributeDefinition> {
+        vec![
+            AttributeDefinition {
+                name: None,
+                semantics: AttributeSemantics::Position { transform: Default::default() },
+                typ: AttributeType::Float32(3),
+            },
+            AttributeDefinition {
+                name: None,
+                semantics: AttributeSemantics::Color,
+                typ: AttributeType::Float32(4),
+            },
+        ]
+    }
+}
+
+impl VertexMapper for GameVertexFormat {
+    type Vertex<'a> = &'a mut Vertex;
+    type Iterator<'a> = Map<ChunksExactMut<'a, u8>, fn(&'a mut[u8]) -> &'a mut Vertex>;
+
+    fn vertices<'a>(&self, data: &'a mut [u8], _format: &GeometryFormat) -> Self::Iterator<'a> {
+        data.chunks_exact_mut(size_of::<Vertex>()).map(from_bytes_mut)
+    }
+}
 
 #[derive(Default, Copy, Clone, Pod, Zeroable)]
 #[repr(C)]
@@ -30,7 +106,7 @@ impl Vertex {
 }
 
 pub struct Graphics {
-    pub material: Handle<Material>,
+    pub material: Material<GameShader>,
     pub camera_uniform: UniformInstance,
     pub camera_uniform_buffer: Handle<VecBuf>,
     pub ship_geometry: Handle<Geometry>,
@@ -52,36 +128,9 @@ impl Graphics {
         let camera_uniform_buffer = render.new_buffer(size_of::<Matrix4<f32>>(), BufferUsages::UNIFORM | BufferUsages::COPY_DST);
         let camera_uniform = render.instantiate_uniform("camera", vec![Some(UniformInstanceEntry::Buffer(camera_uniform_buffer.into()))]);
 
-        let material = render.new_material(
-            MaterialDefinition {
-                attributes: vec![
-                    AttributeDefinition {
-                        name: None,
-                        semantics: AttributeSemantics::Position { transform: Default::default() },
-                        typ: AttributeType::Float32(3),
-                    },
-                    AttributeDefinition {
-                        name: None,
-                        semantics: AttributeSemantics::Color,
-                        typ: AttributeType::Float32(4),
-                    },
-                ],
-                uniforms: vec!["camera".to_owned()],
-            },
-            PipelineDefinition {
-                shader_modules: vec![include_str!("assets/game.wgsl").to_owned()],
-                vertex_shader: Shader { index: 0, entrypoint: "vs_main".to_owned() },
-                fragment_shader: Shader { index: 0, entrypoint: "fs_main".to_owned() },
-                attribute_locations: {
-                    let mut attributes = HashMap::new();
-                    attributes.insert("position".to_owned(), 0);
-                    attributes.insert("color".to_owned(), 1);
-                    attributes
-                },
-            },
-        );
+        let material = render.new_material(GameShader);
 
-        let vertex_format = VertexFormat::from(vec![
+        let format = GeometryFormat::from(vec![
             AttributeDefinition {
                 name: Some("position".to_owned()),
                 semantics: AttributeSemantics::Position { transform: Default::default() },
@@ -96,18 +145,18 @@ impl Graphics {
 
         let ship_geometry = render.new_geometry(
             cast_slice(&SHIP_VERTICES).to_vec(),
-            vertex_format.clone(),
+            format.clone(),
             SHIP_INDICES.to_vec(),
         );
         let meteor_vertices = generate_meteor_geometry();
         let meteor_geometry = render.new_geometry(
             cast_slice(&meteor_vertices).to_vec(),
-            vertex_format.clone(),
+            format.clone(),
             generate_triangle_strip_indices(meteor_vertices.len()),
         );
         let bullet_geometry = render.new_geometry(
             cast_slice(&BULLET_VERTICES).to_vec(),
-            vertex_format.clone(),
+            format.clone(),
             BULLET_INDICES.to_vec(),
         );
 
@@ -119,14 +168,14 @@ impl Graphics {
                         ..v
                     }
                 })).to_vec(),
-                vertex_format.clone(),
+                format.clone(),
                 generate_triangles_indices(ARROW_VERTICES.len() as _),
             )
         });
 
         let spacebar_geometry = render.new_geometry(
             cast_slice(&SPACEBAR_VERTICES).to_vec(),
-            vertex_format.clone(),
+            format.clone(),
             generate_triangles_indices(SPACEBAR_VERTICES.len() as _),
         );
 
@@ -139,19 +188,20 @@ impl Graphics {
             bullet_geometry,
             arrow_geometries,
             spacebar_geometry,
-            text: Text::new(render, &vertex_format),
+            text: Text::new(render, &format),
         }
     }
 
-    pub fn draw_shape(&self, shape: &Shape, transform: &Transform, models: &mut Vec<Model>) {
+    pub fn draw_shape(&self, shape: &Shape, transform: &Transform, models: &mut Vec<GameModel>) {
+        let properties = ModelProperties::new(transform.to_matrix(), FOREGROUND_COLOR);
         match shape {
-            Shape::Ship => models.push(Model::new(self.ship_geometry, transform.to_matrix(), FOREGROUND_COLOR)),
-            Shape::Meteor => models.push(Model::new(self.meteor_geometry, transform.to_matrix(), FOREGROUND_COLOR)),
-            Shape::Bullet => models.push(Model::new(self.bullet_geometry, transform.to_matrix(), FOREGROUND_COLOR)),
+            Shape::Ship => models.push(Model::new(self.ship_geometry, properties)),
+            Shape::Meteor => models.push(Model::new(self.meteor_geometry, properties)),
+            Shape::Bullet => models.push(Model::new(self.bullet_geometry, properties)),
         };
     }
 
-    pub fn draw_text(&self, text: &str, transform: Matrix4<f32>, color: Color, models: &mut Vec<Model>) {
+    pub fn draw_text(&self, text: &str, transform: Matrix4<f32>, color: Color, models: &mut Vec<GameModel>) {
         let text = text
             .chars()
             .filter(|c| c.is_ascii())
@@ -170,41 +220,35 @@ impl Graphics {
                 offset += character.size() + LETTER_SPACING;
                 models.push(Model::new(
                     character.data,
-                    transform * char_translation,
-                    color,
+                    ModelProperties::new(transform * char_translation, color),
                 ));
             }
         }
     }
 
-    pub fn draw_arrow_keys(&self, transform: Matrix4<f32>, color: Color, models: &mut Vec<Model>) {
+    pub fn draw_arrow_keys(&self, transform: Matrix4<f32>, color: Color, models: &mut Vec<GameModel>) {
         models.push(Model::new(
             self.arrow_geometries[0],
-            transform.prepend_translation(&vector!(0.0, 2.3, 0.0)),
-            color,
+            ModelProperties::new(transform.prepend_translation(&vector!(0.0, 2.3, 0.0)), color),
         ));
         models.push(Model::new(
             self.arrow_geometries[1],
-            transform.prepend_translation(&vector!(-2.3, 0.0, 0.0)),
-            color,
+            ModelProperties::new(transform.prepend_translation(&vector!(-2.3, 0.0, 0.0)), color),
         ));
         models.push(Model::new(
             self.arrow_geometries[2],
-            transform.prepend_translation(&vector!(0.0, 0.0, 0.0)),
-            color,
+            ModelProperties::new(transform.prepend_translation(&vector!(0.0, 0.0, 0.0)), color),
         ));
         models.push(Model::new(
             self.arrow_geometries[3],
-            transform.prepend_translation(&vector!(2.3, 0.0, 0.0)),
-            color,
+            ModelProperties::new(transform.prepend_translation(&vector!(2.3, 0.0, 0.0)), color),
         ));
     }
 
-    pub fn draw_spacebar(&self, transform: Matrix4<f32>, color: Color, models: &mut Vec<Model>) {
+    pub fn draw_spacebar(&self, transform: Matrix4<f32>, color: Color, models: &mut Vec<GameModel>) {
         models.push(Model::new(
             self.spacebar_geometry,
-            transform,
-            color,
+            ModelProperties::new(transform, color),
         ));
     }
 }
@@ -294,25 +338,24 @@ const ARROW_VERTICES: [Vertex; 36] = [
     Vertex { position: point!(-0.8, 0.8, 0.0), color: Color::WHITE },
 ];
 const SPACEBAR_VERTICES: [Vertex; 42] = [
-    Vertex {position: point!(-0.6, 0.3, 0.0), color: Color::WHITE},
-    Vertex {position: point!(-0.4, 0.3, 0.0), color: Color::WHITE},
-    Vertex {position: point!(-0.6, -0.3, 0.0), color: Color::WHITE},
-    Vertex {position: point!(-0.4, 0.3, 0.0), color: Color::WHITE},
-    Vertex {position: point!(-0.6, -0.3, 0.0), color: Color::WHITE},
-    Vertex {position: point!(-0.4, -0.1, 0.0), color: Color::WHITE},
-    Vertex {position: point!(-0.6, -0.3, 0.0), color: Color::WHITE},
-    Vertex {position: point!(-0.4, -0.1, 0.0), color: Color::WHITE},
-    Vertex {position: point!(0.6, -0.3, 0.0), color: Color::WHITE},
-    Vertex {position: point!(-0.4, -0.1, 0.0), color: Color::WHITE},
-    Vertex {position: point!(0.6, -0.3, 0.0), color: Color::WHITE},
-    Vertex {position: point!(0.4, -0.1, 0.0), color: Color::WHITE},
-    Vertex {position: point!(0.6, -0.3, 0.0), color: Color::WHITE},
-    Vertex {position: point!(0.4, -0.1, 0.0), color: Color::WHITE},
-    Vertex {position: point!(0.6, 0.3, 0.0), color: Color::WHITE},
-    Vertex {position: point!(0.4, -0.1, 0.0), color: Color::WHITE},
-    Vertex {position: point!(0.6, 0.3, 0.0), color: Color::WHITE},
-    Vertex {position: point!(0.4, 0.3, 0.0), color: Color::WHITE},
-
+    Vertex { position: point!(-0.6, 0.3, 0.0), color: Color::WHITE },
+    Vertex { position: point!(-0.4, 0.3, 0.0), color: Color::WHITE },
+    Vertex { position: point!(-0.6, -0.3, 0.0), color: Color::WHITE },
+    Vertex { position: point!(-0.4, 0.3, 0.0), color: Color::WHITE },
+    Vertex { position: point!(-0.6, -0.3, 0.0), color: Color::WHITE },
+    Vertex { position: point!(-0.4, -0.1, 0.0), color: Color::WHITE },
+    Vertex { position: point!(-0.6, -0.3, 0.0), color: Color::WHITE },
+    Vertex { position: point!(-0.4, -0.1, 0.0), color: Color::WHITE },
+    Vertex { position: point!(0.6, -0.3, 0.0), color: Color::WHITE },
+    Vertex { position: point!(-0.4, -0.1, 0.0), color: Color::WHITE },
+    Vertex { position: point!(0.6, -0.3, 0.0), color: Color::WHITE },
+    Vertex { position: point!(0.4, -0.1, 0.0), color: Color::WHITE },
+    Vertex { position: point!(0.6, -0.3, 0.0), color: Color::WHITE },
+    Vertex { position: point!(0.4, -0.1, 0.0), color: Color::WHITE },
+    Vertex { position: point!(0.6, 0.3, 0.0), color: Color::WHITE },
+    Vertex { position: point!(0.4, -0.1, 0.0), color: Color::WHITE },
+    Vertex { position: point!(0.6, 0.3, 0.0), color: Color::WHITE },
+    Vertex { position: point!(0.4, 0.3, 0.0), color: Color::WHITE },
     Vertex { position: point!(-3.0, 1.0, 0.0), color: Color::WHITE },
     Vertex { position: point!(-2.8, 0.8, 0.0), color: Color::WHITE },
     Vertex { position: point!(3.0, 1.0, 0.0), color: Color::WHITE },

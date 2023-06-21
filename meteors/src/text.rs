@@ -4,7 +4,7 @@ use bytemuck::cast_slice;
 use nalgebra::{point, vector, Vector2};
 
 use engine::render::{Color, Handle, RenderApi};
-use engine::render::geometry::{Geometry, VertexFormat};
+use engine::render::geometry::{Geometry, GeometryFormat};
 
 use crate::graphics::{generate_triangle_strip_indices, Vertex};
 use crate::text::gen::LineBuilder;
@@ -14,7 +14,7 @@ pub struct Text {
 }
 
 impl Text {
-    pub fn new(render: &mut RenderApi, vertex_format: &VertexFormat) -> Self {
+    pub fn new(render: &mut RenderApi, vertex_format: &GeometryFormat) -> Self {
         Text {
             characters: [
                 // start at ASCII char 32 (space)

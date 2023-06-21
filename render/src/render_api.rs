@@ -1,21 +1,20 @@
 use std::collections::HashMap;
 use std::iter::once;
 
-use nalgebra::Matrix4;
 use wgpu::RenderPassDescriptor;
 
 use utils::{CompactList, Handle};
 
 use crate::{BufferUsages, Color, DeviceContext, Frame, MutableHandle, SurfaceContext, TextureFormat};
-use crate::geometry::{Geometry, VertexFormat};
-use crate::material::{Counter, Material, MaterialDefinition, PipelineDefinition, UniformDefinition};
+use crate::geometry::{Geometry, GeometryFormat};
+use crate::material::{Counter, Material, UniformDefinition};
 use crate::maybe::MaybeRef;
+use crate::shader::Shader;
 use crate::uniform::{Uniform, UniformInstance, UniformInstanceEntry};
 use crate::vecbuf::VecBuf;
 
 #[derive(Default)]
 pub struct DeviceResources {
-    pub(crate) materials: CompactList<Material>,
     pub(crate) buffers: CompactList<VecBuf>,
     pub(crate) geometries: CompactList<Geometry>,
     pub(crate) bind_group_layouts: CompactList<wgpu::BindGroupLayout>,
@@ -76,8 +75,8 @@ impl RenderApi {
         }
     }
 
-    pub fn new_material(&mut self, material: MaterialDefinition, pipeline: PipelineDefinition) -> Handle<Material> {
-        self.resources.materials.add(Material::new(&self.device, &self.resources, &self.surface, material, pipeline))
+    pub fn new_material<S: Shader>(&mut self, shader: S) -> Material<S> {
+        Material::new(shader, &self.device, &self.resources, &self.surface)
     }
 
     pub fn register_uniform(&mut self, name: &str, uniform: UniformDefinition) {
@@ -97,10 +96,10 @@ impl RenderApi {
     }
 
     pub fn new_empty_geometry(&mut self) -> Handle<Geometry> {
-        self.new_geometry(vec![], VertexFormat::empty(), vec![])
+        self.new_geometry(vec![], GeometryFormat::empty(), vec![])
     }
 
-    pub fn new_geometry(&mut self, data: Vec<u8>, format: VertexFormat, indices: Vec<u16>) -> Handle<Geometry> {
+    pub fn new_geometry(&mut self, data: Vec<u8>, format: GeometryFormat, indices: Vec<u16>) -> Handle<Geometry> {
         self.resources.geometries.add(
             Geometry::new(
                 data,
@@ -145,17 +144,14 @@ pub struct Drawer<'a> {
 }
 
 impl<'a> Drawer<'a> {
-    pub fn submit_batch(&mut self, batch: Batch) {
-        let material = self.resources.materials.get(batch.material)
-            .unwrap();
-
-        let Counter { vertices, indices } = material.cache_models(self.context, self.resources, &batch.models);
+    pub fn submit_batch<S: Shader>(&mut self, input: &S::Input, batch: Batch<S>) {
+        let Counter { vertices, indices } = batch.material.cache_models(self.context, self.resources, &batch.models);
 
         if indices == 0 {
             return;
         }
 
-        let material_cache = material.cache();
+        let material_cache = batch.material.cache();
         let uniform_caches: Vec<_> = batch.uniforms.into_iter().map(|uniform| {
             uniform.validate_bind_group(self.context, self.resources);
             uniform.cache()
@@ -180,7 +176,7 @@ impl<'a> Drawer<'a> {
             depth_stencil_attachment: None,
         });
 
-        render_pass.set_pipeline(material.pipeline());
+        render_pass.set_pipeline(batch.material.pipeline());
         render_pass.set_vertex_buffer(0, material_cache.vertex_buffer.entire_slice());
         render_pass.set_index_buffer(material_cache.index_buffer.entire_slice(), wgpu::IndexFormat::Uint16);
         for (i, uniform) in uniform_caches.iter().enumerate() {
@@ -203,31 +199,29 @@ impl<'a> Drawer<'a> {
     }
 }
 
-pub struct Model {
+pub struct Model<I> {
     pub geometry: Handle<Geometry>,
-    pub transform: Matrix4<f32>,
-    pub color: Color,
+    pub input: I,
 }
 
-impl Model {
-    pub fn new(geometry: Handle<Geometry>, transform: Matrix4<f32>, color: Color) -> Self {
+impl<I> Model<I> {
+    pub fn new(geometry: Handle<Geometry>, input: I) -> Self {
         Model {
             geometry,
-            transform,
-            color,
+            input,
         }
     }
 }
 
-pub struct Batch<'a> {
-    material: Handle<Material>,
+pub struct Batch<'a, S: Shader> {
+    material: &'a Material<S>,
     uniforms: Vec<&'a UniformInstance>,
-    models: Vec<Model>,
+    models: Vec<Model<S::Input>>,
     clear: Option<Color>,
 }
 
-impl<'a> Batch<'a> {
-    pub fn new(material: Handle<Material>, uniforms: Vec<&'a UniformInstance>) -> Self {
+impl<'a, S: Shader> Batch<'a, S> {
+    pub fn new(material: &'a Material<S>, uniforms: Vec<&'a UniformInstance>) -> Self {
         Batch {
             material,
             uniforms,
@@ -236,12 +230,12 @@ impl<'a> Batch<'a> {
         }
     }
 
-    pub fn model(&mut self, model: Model) {
+    pub fn model(&mut self, model: Model<S::Input>) {
         self.models.push(model);
     }
 
     pub fn models<I>(&mut self, iter: I)
-    where I: IntoIterator<Item=Model> {
+        where I: IntoIterator<Item=Model<S::Input>> {
         self.models.extend(iter);
     }
 

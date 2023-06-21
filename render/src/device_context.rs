@@ -1,7 +1,9 @@
 use wgpu::{Adapter, Device, Queue, ShaderSource};
+
 use crate::{BufferUsages, TextureFormat};
-use crate::material::{MaterialDefinition, PipelineDefinition, UniformDefinition, UniformEntryTypeDefinition, UniformVisibility};
+use crate::material::{AttributeDefinition, UniformDefinition, UniformEntryTypeDefinition, UniformVisibility};
 use crate::render_api::DeviceResources;
+use crate::shader::ShaderDefinition;
 use crate::surface_context::SurfaceContext;
 use crate::vecbuf::VecBuf;
 
@@ -61,22 +63,24 @@ impl DeviceContext {
     pub(crate) fn create_render_pipeline(&self,
                                          resources: &DeviceResources,
                                          surface: &SurfaceContext,
-                                         material: MaterialDefinition,
-                                         pipeline: PipelineDefinition) -> wgpu::RenderPipeline {
-        let shader_modules: Vec<_> = pipeline.shader_modules.into_iter()
+                                         shader: ShaderDefinition,
+                                         attributes: Vec<AttributeDefinition>,
+                                         /*material: MaterialDefinition,
+                                         pipeline: PipelineDefinition*/) -> wgpu::RenderPipeline {
+        let shader_modules: Vec<_> = shader.shader_modules.into_iter()
             .map(|s| self.device.create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Default::default(),
                 source: ShaderSource::Wgsl(s.into()),
             }))
             .collect();
 
-        let array_stride:usize = material.attributes.iter().map(|a| a.typ.size()).sum();
+        let array_stride: usize = attributes.iter().map(|a| a.typ.size()).sum();
         let mut offset = 0;
-        let attributes: Vec<_> = material.attributes.into_iter()
+        let attributes: Vec<_> = attributes.into_iter()
             .map(|a| {
                 let shader_location = match a.name {
-                    Some(name) => pipeline.attribute_locations[&name],
-                    None => pipeline.attribute_locations[a.semantics.default_name()],
+                    Some(name) => shader.attribute_locations[&name],
+                    None => shader.attribute_locations[a.semantics.default_name()],
                 };
                 let attrib = wgpu::VertexAttribute {
                     format: a.typ.into(),
@@ -88,7 +92,7 @@ impl DeviceContext {
             })
             .collect();
 
-        let uniforms = material.uniforms.into_iter()
+        let uniforms = shader.uniforms.into_iter()
             .map(|u| &resources.uniforms[&u])
             .map(|u| resources.bind_group_layouts.get(u.layout))
             .collect::<Option<Vec<_>>>()
@@ -104,8 +108,8 @@ impl DeviceContext {
             depth_stencil: None,
             multisample: Default::default(),
             fragment: Some(wgpu::FragmentState {
-                module: &shader_modules[pipeline.fragment_shader.index],
-                entry_point: &pipeline.fragment_shader.entrypoint,
+                module: &shader_modules[shader.fragment_shader.module],
+                entry_point: &shader.fragment_shader.entrypoint,
                 targets: &[
                     Some(wgpu::ColorTargetState {
                         format: surface.format().unwrap_or(TextureFormat::Rgba8Unorm),
@@ -115,8 +119,8 @@ impl DeviceContext {
                 ],
             }),
             vertex: wgpu::VertexState {
-                module: &shader_modules[pipeline.vertex_shader.index],
-                entry_point: &pipeline.vertex_shader.entrypoint,
+                module: &shader_modules[shader.vertex_shader.module],
+                entry_point: &shader.vertex_shader.entrypoint,
                 buffers: &[
                     // Vertex buffer
                     wgpu::VertexBufferLayout {

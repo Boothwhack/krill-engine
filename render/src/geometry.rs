@@ -30,33 +30,33 @@ impl From<Vec<u16>> for Indices {
 pub struct Geometry {
     /// Raw vertex data. The application is responsible for making sure the geometry is formatted
     /// as the material expects it.
-    pub(crate) vertex_data: Vec<u8>,
-    pub(crate) vertex_format: VertexFormat,
+    pub(crate) data: Vec<u8>,
+    pub(crate) format: GeometryFormat,
     pub(crate) indices: Vec<u16>,
 }
 
 impl Geometry {
-    pub(crate) fn new(vertex_data: Vec<u8>, vertex_format: VertexFormat, indices: Vec<u16>) -> Self {
+    pub(crate) fn new(vertex_data: Vec<u8>, vertex_format: GeometryFormat, indices: Vec<u16>) -> Self {
         Geometry {
-            vertex_data,
-            vertex_format,
+            data: vertex_data,
+            format: vertex_format,
             indices,
         }
     }
 }
 
 #[derive(Clone)]
-pub struct VertexFormat(Vec<AttributeDefinition>);
+pub struct GeometryFormat(Vec<AttributeDefinition>);
 
-impl From<Vec<AttributeDefinition>> for VertexFormat {
+impl From<Vec<AttributeDefinition>> for GeometryFormat {
     fn from(value: Vec<AttributeDefinition>) -> Self {
-        VertexFormat(value)
+        GeometryFormat(value)
     }
 }
 
-impl VertexFormat {
+impl GeometryFormat {
     pub fn empty() -> Self {
-        VertexFormat(vec![])
+        GeometryFormat(vec![])
     }
 
     pub fn attributes(&self) -> &Vec<AttributeDefinition> {

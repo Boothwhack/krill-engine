@@ -144,7 +144,7 @@ pub struct Drawer<'a> {
 }
 
 impl<'a> Drawer<'a> {
-    pub fn submit_batch<S: Shader>(&mut self, input: &S::Input, batch: Batch<S>) {
+    pub fn submit_batch<S: Shader>(&mut self, batch: Batch<S>) {
         let Counter { vertices, indices } = batch.material.cache_models(self.context, self.resources, &batch.models);
 
         if indices == 0 {

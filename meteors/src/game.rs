@@ -440,10 +440,7 @@ pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<Surfa
             batch.clear(BACKGROUND_COLOR);
             batch.models(models);
 
-            drawer.submit_batch(&ModelProperties {
-                transform: view_matrix,
-                color: FOREGROUND_COLOR,
-            }, batch);
+            drawer.submit_batch(batch);
             drawer.finish();
 
             render.present_frame(frame);

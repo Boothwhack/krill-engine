@@ -98,7 +98,6 @@ impl UniformInstance {
                     let buffer = resources.buffers.get(*buffer).unwrap();
                     buffer.version() == *version
                 }
-                _ => false,
             }
         })
     }

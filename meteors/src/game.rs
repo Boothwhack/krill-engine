@@ -18,7 +18,7 @@ use engine::surface::input::{DeviceEvent, ElementState, VirtualKeyCode};
 use engine::utils::{HList, hlist};
 use engine::wgpu_render::WGPURenderResource;
 
-use crate::graphics::{BACKGROUND_COLOR, FOREGROUND_COLOR, Graphics, Shape, ModelProperties, GameModel};
+use crate::graphics::{BACKGROUND_COLOR, FOREGROUND_COLOR, GameModel, Graphics, Shape};
 
 #[derive(Debug, Default)]
 struct InputState {
@@ -192,7 +192,6 @@ pub struct GlobalState {
 
 pub struct MainMenuState {
     world: World,
-    fade_out: Option<(Instant, Duration)>,
 }
 
 impl Default for MainMenuState {
@@ -200,7 +199,7 @@ impl Default for MainMenuState {
         let mut world = default_world();
         add_player(&mut world);
 
-        const START_METEOR_SIZE:f32 = 1.5;
+        const START_METEOR_SIZE: f32 = 1.5;
         let start_meteor = world.new_entity();
         world.components_mut::<Meteor>().put(start_meteor, Meteor);
         world.components_mut::<Body>().put(start_meteor, Body {
@@ -213,12 +212,9 @@ impl Default for MainMenuState {
             ..Default::default()
         });
         world.components_mut::<Shape>().put(start_meteor, Shape::Meteor);
-        world.components_mut::<Collider>().put(start_meteor, Collider { size: START_METEOR_SIZE*0.75 });
+        world.components_mut::<Collider>().put(start_meteor, Collider { size: START_METEOR_SIZE * 0.75 });
 
-        MainMenuState {
-            world,
-            fade_out: None,
-        }
+        MainMenuState { world }
     }
 }
 
@@ -313,7 +309,7 @@ pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<Surfa
                     create_entities(create, &mut state.world);
 
                     draw_world(&state.world, &mut game.graphics, &mut models);
-                    draw_logo(&game.global, &game.graphics, &mut models);
+                    draw_logo(&game.graphics, &mut models);
 
                     game.graphics.draw_arrow_keys(
                         Matrix4::new_scaling(0.3).append_translation(&vector!(-4.5, -2.0, 0.0)),
@@ -551,6 +547,9 @@ fn common_update_world(mut context: GameContext) {
             let thrust_angle = Rotation3::from_axis_angle(&Vec3::z_axis(), body.transform.rotation);
             let thrust = thrust_angle * thrust_direction;
             body.velocity += thrust * elapsed_since_previous_frame;
+            if body.velocity.magnitude() > MAX_SPEED {
+                body.velocity = body.velocity.normalize() * MAX_SPEED;
+            }
 
             if shoot {
                 let angle = Rotation3::from_axis_angle(&Vec3::z_axis(), body.transform.rotation);
@@ -731,7 +730,7 @@ fn draw_score(score: u32, global: &GlobalState, graphics: &Graphics, models: &mu
     graphics.draw_text(&score, text_translation, FOREGROUND_COLOR, models);
 }
 
-fn draw_logo(global: &GlobalState, graphics: &Graphics, models: &mut Vec<GameModel>) {
+fn draw_logo(graphics: &Graphics, models: &mut Vec<GameModel>) {
     let skew = matrix![
         1.0, 0.0, 0.0, 0.0;
         0.0, 1.0, 0.0, 0.0;

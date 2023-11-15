@@ -10,7 +10,7 @@ use crate::winit_surface::{setup_winit_resource, WinitSurface};
 
 #[cfg(target_family = "wasm")]
 pub mod web {
-    use web_sys::HtmlCanvasElements;
+    use web_sys::HtmlCanvasElement;
 
     pub enum Placement {
         /// The canvas element will be placed into the DOM in the `<body>` tag.
@@ -118,6 +118,8 @@ impl PlatformWithDefaultSetup for DefaultPlatform {
         let winit_resource = setup_winit_resource();
 
         #[cfg(target_family = "wasm")] {
+            use crate::wgpu_render::WGPUCompatible;
+            use log::debug;
             use winit::platform::web::WindowExtWebSys;
 
             let canvas = winit_resource.raw_window().canvas();

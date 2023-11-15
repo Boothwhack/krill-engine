@@ -2,6 +2,7 @@ use std::mem::swap;
 use std::time::Duration;
 
 use bytemuck::bytes_of;
+use engine::resources::HasResources;
 use float_ord::FloatOrd;
 use instant::Instant;
 use log::debug;
@@ -11,7 +12,7 @@ use rand::random;
 use engine::asset_resource::AssetSourceResource;
 use engine::assets::source::AssetSource;
 use engine::ecs::world::{EntityId, View, World};
-use engine::events::{Context, ContextWith};
+use engine::events::Context;
 use engine::render::{Batch, RenderApi};
 use engine::surface::{Exit, RunnableSurface, SurfaceEvent, SurfaceResource};
 use engine::surface::input::{DeviceEvent, ElementState, VirtualKeyCode};
@@ -273,8 +274,8 @@ const SIZE_BIAS: f32 = 1.8;
 
 pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<SurfaceEvent, R>) -> ()
     where S: RunnableSurface,
-          for<'a> Context<'a, SurfaceEvent, R>: ContextWith<HList!(GameResource, WGPURenderResource, SurfaceResource<S>), I> {
-    let (game, resources) = context.resources_mut();
+          R: HasResources<HList!(GameResource, WGPURenderResource, SurfaceResource<S>), I>, {
+    let (game, resources) = context.res();
     let (render, resources) = resources;
     let (surface, _) = resources;
 

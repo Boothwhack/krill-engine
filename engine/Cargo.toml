@@ -9,6 +9,7 @@ edition = "2021"
 assets = { path = "../assets" }
 async-trait = "0.1"
 ecs = { path = "../ecs" }
+events = { path = "../events" }
 log = "0.4"
 never-say-never = "6.6.666"
 render = { path = "../render" }

@@ -1,8 +1,9 @@
-use std::future::{IntoFuture};
+use std::any::Any;
+use std::future::IntoFuture;
 use std::ops::{Deref, DerefMut};
-use std::sync::mpsc::SendError;
-use utils::hlist::{Concat, Has, IntoShape};
-use crate::events::{EventBus, EventSender, InvalidEvent, Listeners};
+use events::{EventSystem, Event, UnhandledEvent};
+use utils::hlist::{Concat, IntoShape};
+use crate::resources::Resources;
 
 pub struct ProcessInfo;
 
@@ -40,7 +41,7 @@ impl<R: 'static> ProcessBuilder<R> {
         ProcessBuilder { resources }
     }
 
-    pub fn build(self) -> Process<(EventSender, R)> {
+    pub fn build(self) -> Process<R> {
         Process::new(self.resources)
     }
 }
@@ -49,69 +50,73 @@ impl<R: 'static> ProcessBuilder<R> {
 /// engine and the application. These resources are passed along to all event handlers when an
 /// event is emitted.
 pub struct Process<R> {
-    resources: R,
-    event_bus: EventBus<R>,
+    resources: Resources<R>,
+    event_system: EventSystem<Resources<R>>,
 }
 
 impl<R: 'static> DerefMut for Process<R> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.resources_mut()
-    }
-}
-
-impl<R: 'static> Deref for Process<R> {
-    type Target = R;
-
-    fn deref(&self) -> &Self::Target {
         self.resources()
     }
 }
 
+impl<R: 'static> Deref for Process<R> {
+    type Target = Resources<R>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.resources
+    }
+}
+
 impl<R: 'static> Process<R> {
-    fn new(resources: R) -> Process<(EventSender, R)> {
-        let (sender, event_bus) = EventBus::new();
+    fn new(resources: R) -> Process<R> {
+        //let event_bus) = EventBus::new();
+        let event_system = EventSystem::new();
 
         Process {
-            resources: (sender, resources),
-            event_bus,
+            resources: Resources::new(resources),
+            event_system,
         }
     }
 
-    pub fn resources(&self) -> &R {
-        &self.resources
-    }
-
-    pub fn resources_mut(&mut self) -> &mut R {
+    pub fn resources(&mut self) -> &mut Resources<R> {
         &mut self.resources
     }
 
-    pub fn dispatch_events(&mut self) -> Result<(), InvalidEvent> {
-        self.event_bus.dispatch_all(&mut self.resources)
+    pub fn event_system(&mut self) -> &mut EventSystem<Resources<R>> {
+        &mut self.event_system
     }
 
-    pub fn send_event<E: 'static, I>(&self, event: E) -> Result<(), SendError<E>>
-        where R: Has<EventSender, I> {
-        self.get().send(event)
+    pub fn handle_event<M: 'static + Event>(&mut self, message: M) -> Result<M::Output, M> {
+        self.event_system.handle_event(message, &mut self.resources)
     }
 
-    pub fn event_listeners<E: 'static>(&mut self, listeners: Listeners<E, R>) {
-        self.event_bus.register_event(listeners);
+    pub fn handle_generic_message(&mut self, message: Box<dyn Any>) -> Result<Box<dyn Any>, UnhandledEvent> {
+        self.event_system.handle_generic_event(message, &mut self.resources)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use utils::{hlist, HList};
-    use utils::hlist::Has;
+    use utils::{hlist, HList, delist};
     use crate::process::ProcessBuilder;
+
+    struct ResourceA(u32);
+
+    struct ResourceB(f32);
+
+    struct ResourceC(&'static str);
 
     #[test]
     fn setup() {
-        let process = ProcessBuilder::new()
-            .setup(|_| hlist!(25u32))
-            .setup(|i: HList!(u32)| hlist!(*i.get(), "string".to_owned()))
-            .setup(|s: HList!(String)| hlist!(0.6f32, false))
+        let mut process = ProcessBuilder::new()
+            .setup(|_| hlist!(ResourceA(25u32)))
+            .setup(|delist!(ResourceA(int)): HList!(ResourceA)| hlist!(ResourceA(int + 5), ResourceC("string")))
+            .setup(|_s: HList!(ResourceC)| hlist!(ResourceB(0.7f32)))
             .build();
-        assert_eq!(hlist!(25u32, 0.6f32, false), process.resources.1);
+
+        let delist!(res_a, res_b) = process.get_some::<HList!(ResourceA, ResourceB), _>();
+        assert_eq!(res_a.0, 30u32);
+        assert_eq!(res_b.0, 0.7f32);
     }
 }

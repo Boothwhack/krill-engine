@@ -1,4 +1,3 @@
-use engine::events::Listeners;
 use engine::platform::{detect_platform, Platform, SetupPlatformDefaultsExt};
 use engine::process::ProcessBuilder;
 use engine::surface::RunExt;
@@ -30,7 +29,7 @@ fn main() {
             .setup_async(game::setup_game_resources).await
             .build();
 
-        process.event_listeners(Listeners::new().with_listener(game::on_surface_event));
+        process.event_system().handlers_for().append(game::on_surface_event);
 
         process.run();
     });

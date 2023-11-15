@@ -7,11 +7,11 @@ use winit::event::{DeviceEvent, Event, WindowEvent};
 use winit::event_loop::EventLoop;
 use winit::window::{Window, WindowBuilder};
 
-use utils::{hlist, HList};
-use utils::hlist::{Concat, Has, IntoShape};
+use utils::{hlist, HList, delist};
+use utils::hlist::{Concat, IntoShape};
 
-use crate::events::EventSender;
 use crate::process::{Process, ProcessBuilder};
+use crate::resources::{HasResources, Resources};
 use crate::surface::{Exit, RunnableSurface, SurfaceEvent, SurfaceResource};
 use crate::wgpu_render::WGPUCompatible;
 
@@ -93,9 +93,10 @@ impl<R, I> WinitSetupExt<R, I> for ProcessBuilder<R>
 impl RunnableSurface for WinitSurface {
     type Output = Never;
 
-    fn run<R, IS, IE>(mut process: Process<R>) -> Self::Output
-        where R: 'static + Has<SurfaceResource<WinitSurface>, IS> + Has<EventSender, IE> {
-        let surface: &mut SurfaceResource<_> = process.get_mut();
+    fn run<R: 'static, IS>(mut process: Process<R>) -> Self::Output
+        where Resources<R>: HasResources<HList!(SurfaceResource<WinitSurface>), IS> {
+        //let surface: &mut SurfaceResource<_> = process.get_mut();
+        let delist!(surface) = process.res();
         let event_loop = surface
             .event_loop
             .detach()
@@ -107,35 +108,34 @@ impl RunnableSurface for WinitSurface {
         event_loop.run(move |event, _, control_flow| {
             match event {
                 Event::RedrawRequested(window_id) if window_id == window => {
-                    process.send_event(SurfaceEvent::Draw).unwrap();
+                    let _unhandled = process.handle_event(SurfaceEvent::Draw);
                 }
                 Event::RedrawEventsCleared => {
-                    process.dispatch_events().unwrap();
-
-                    let surface: &SurfaceResource<_> = process.get();
+                    let delist!(surface) = process.res();
                     surface.window.request_redraw();
                 }
                 Event::WindowEvent { event, window_id } if window_id == window => {
                     match event {
                         WindowEvent::Resized(PhysicalSize { width, height }) => {
-                            process.send_event(SurfaceEvent::Resize { width, height }).unwrap();
+                            let _unhandled = process.handle_event(SurfaceEvent::Resize { width, height });
                         }
                         WindowEvent::CloseRequested => {
-                            process.send_event(SurfaceEvent::CloseRequested).unwrap();
+                            let _unhandled = process.handle_event(SurfaceEvent::CloseRequested);
                         }
                         WindowEvent::KeyboardInput { input, .. } => {
-                            process.send_event(SurfaceEvent::DeviceEvent(DeviceEvent::Key(input))).unwrap();
+                            let _unhandled = process.handle_event(SurfaceEvent::DeviceEvent(DeviceEvent::Key(input)));
                         }
                         _ => {}
                     }
                 }
                 Event::DeviceEvent { event, .. } => {
-                    process.send_event(SurfaceEvent::DeviceEvent(event)).unwrap();
+                    let _unhandled = process.handle_event(SurfaceEvent::DeviceEvent(event));
                 }
                 _ => {},
             };
 
-            let surface: &mut SurfaceResource<_> = process.resources_mut().get_mut();
+            //let surface: &mut SurfaceResource<_> = process.resources_mut().get_mut();
+            let delist!(surface) = process.res();
             match surface.exit.take() {
                 Some(Exit::Exit) => control_flow.set_exit(),
                 Some(Exit::Status(code)) => control_flow.set_exit_with_code(code),

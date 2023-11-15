@@ -1,8 +1,9 @@
 use std::error::Error;
 use std::ops::{Deref, DerefMut};
-use utils::hlist::{Has};
-use crate::events::EventSender;
-use crate::process::{Process};
+use events::Event;
+use utils::HList;
+use crate::process::Process;
+use crate::resources::{HasResources, Resources};
 
 pub struct SurfaceResource<S> {
     surface: S,
@@ -49,6 +50,10 @@ pub enum SurfaceEvent {
     DeviceEvent(input::DeviceEvent),
 }
 
+impl Event for SurfaceEvent {
+    type Output = ();
+}
+
 pub enum Exit {
     Exit,
     Status(i32),
@@ -72,20 +77,20 @@ impl Default for Exit {
 pub trait RunnableSurface {
     type Output;
 
-    fn run<R, IS, IE>(process: Process<R>) -> Self::Output
+    fn run<R: 'static, IS>(process: Process<R>) -> Self::Output
         where Self: Sized,
-              R: 'static + Has<SurfaceResource<Self>, IS> + Has<EventSender, IE>;
+              Resources<R>: HasResources<HList!(SurfaceResource<Self>), IS>;
 
     fn set_exit(&mut self, exit: Exit);
 }
 
-pub trait RunExt<R, S: RunnableSurface, IS, IE> {
+pub trait RunExt<R, S: RunnableSurface, IS> {
     fn run(self) -> S::Output;
 }
 
-impl<R, S, IS, IE> RunExt<R, S, IS, IE> for Process<R>
+impl<R: 'static, S, IS> RunExt<R, S, IS> for Process<R>
     where S: RunnableSurface,
-          R: 'static + Has<SurfaceResource<S>, IS> + Has<EventSender, IE> {
+          Resources<R>: HasResources<HList!(SurfaceResource<S>), IS> {
     fn run(self) -> S::Output {
         S::run(self)
     }

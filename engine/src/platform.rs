@@ -1,17 +1,16 @@
-use std::future::{Future};
+use std::future::Future;
 use async_trait::async_trait;
-use log::debug;
 use utils::{HList, hlist};
 use utils::hlist::{Concat, IntoShape};
 use crate::asset_resource::AssetSourceResource;
-use crate::process::{ProcessBuilder};
+use crate::process::ProcessBuilder;
 use crate::surface::SurfaceResource;
-use crate::wgpu_render::{setup_wgpu_render_resource, WGPUCompatible, WGPURenderResource};
+use crate::wgpu_render::{setup_wgpu_render_resource, WGPURenderResource};
 use crate::winit_surface::{setup_winit_resource, WinitSurface};
 
 #[cfg(target_family = "wasm")]
 pub mod web {
-    use web_sys::{HtmlCanvasElement};
+    use web_sys::HtmlCanvasElements;
 
     pub enum Placement {
         /// The canvas element will be placed into the DOM in the `<body>` tag.

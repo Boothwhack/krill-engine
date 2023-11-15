@@ -422,6 +422,7 @@ dependencies = [
  "async-trait",
  "console_error_panic_hook",
  "ecs",
+ "events",
  "log",
  "never-say-never",
  "raw-window-handle 0.5.2",
@@ -468,6 +469,10 @@ dependencies = [
  "cc",
  "libc",
 ]
+
+[[package]]
+name = "events"
+version = "0.1.0"
 
 [[package]]
 name = "fastrand"

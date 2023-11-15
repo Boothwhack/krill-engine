@@ -3,6 +3,7 @@ members = [
     "assets",
     "ecs",
     "engine",
+    "events",
     "meteors",
     "render",
     "utils",

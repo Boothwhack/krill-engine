@@ -16,7 +16,7 @@ use engine::events::Context;
 use engine::render::{Batch, RenderApi};
 use engine::surface::{Exit, RunnableSurface, SurfaceEvent, SurfaceResource};
 use engine::surface::input::{DeviceEvent, ElementState, VirtualKeyCode};
-use engine::utils::{HList, hlist};
+use engine::utils::{HList, hlist, delist};
 use engine::wgpu_render::WGPURenderResource;
 
 use crate::graphics::{BACKGROUND_COLOR, FOREGROUND_COLOR, GameModel, Graphics, Shape};
@@ -275,9 +275,7 @@ const SIZE_BIAS: f32 = 1.8;
 pub fn on_surface_event<R, S, I>(event: SurfaceEvent, mut context: Context<SurfaceEvent, R>) -> ()
     where S: RunnableSurface,
           R: HasResources<HList!(GameResource, WGPURenderResource, SurfaceResource<S>), I>, {
-    let (game, resources) = context.res();
-    let (render, resources) = resources;
-    let (surface, _) = resources;
+    let delist!(game, render, surface) = context.res();
 
     match event {
         SurfaceEvent::Resize { width, height } => {

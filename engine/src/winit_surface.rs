@@ -134,14 +134,17 @@ impl RunnableSurface for WinitSurface {
                 _ => {},
             };
 
-            //let surface: &mut SurfaceResource<_> = process.resources_mut().get_mut();
-            let delist!(surface) = process.res();
-            match surface.exit.take() {
-                Some(Exit::Exit) => control_flow.set_exit(),
-                Some(Exit::Status(code)) => control_flow.set_exit_with_code(code),
-                Some(Exit::Err(err)) => panic!("error in surface event handler: {}", err),
-                _ => {}
-            };
+            {
+                let delist!(surface) = process.res();
+                match surface.exit.take() {
+                    Some(Exit::Exit) => control_flow.set_exit(),
+                    Some(Exit::Status(code)) => control_flow.set_exit_with_code(code),
+                    Some(Exit::Err(err)) => panic!("error in surface event handler: {}", err),
+                    _ => {}
+                };
+            }
+
+            //process.flush_message_queue();
         })
     }
 

@@ -1,6 +1,7 @@
 use std::any::Any;
 use std::future::IntoFuture;
 use std::ops::{Deref, DerefMut};
+use std::sync::mpsc::{Receiver, Sender, channel};
 use events::{EventSystem, Event, UnhandledEvent};
 use utils::hlist::{Concat, IntoShape};
 use crate::resources::Resources;
@@ -41,8 +42,28 @@ impl<R: 'static> ProcessBuilder<R> {
         ProcessBuilder { resources }
     }
 
+    pub fn with<T>(self, resource: T) -> ProcessBuilder<(T, R)> {
+        ProcessBuilder {
+            resources: (resource, self.resources),
+        }
+    }
+
     pub fn build(self) -> Process<R> {
         Process::new(self.resources)
+    }
+}
+
+pub struct MessageSender {
+    sender: Sender<Box<dyn Event<Output = ()>>>,
+}
+
+impl MessageSender {
+    fn new(sender: Sender<Box<dyn Event<Output = ()>>>) -> Self {
+        MessageSender { sender }
+    }
+
+    pub fn send(&self, message: impl Event<Output = ()>) {
+        //self.sender.send(Box::new(message)).unwrap();
     }
 }
 
@@ -52,6 +73,7 @@ impl<R: 'static> ProcessBuilder<R> {
 pub struct Process<R> {
     resources: Resources<R>,
     event_system: EventSystem<Resources<R>>,
+    receiver: Receiver<Box<dyn Event<Output = ()>>>,
 }
 
 impl<R: 'static> DerefMut for Process<R> {
@@ -72,10 +94,13 @@ impl<R: 'static> Process<R> {
     fn new(resources: R) -> Process<R> {
         //let event_bus) = EventBus::new();
         let event_system = EventSystem::new();
+        let (sender, receiver) = channel();
+        //let resources = (MessageSender::new(sender), resources);
 
         Process {
             resources: Resources::new(resources),
             event_system,
+            receiver,
         }
     }
 

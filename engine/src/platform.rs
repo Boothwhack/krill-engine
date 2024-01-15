@@ -6,6 +6,7 @@ use crate::asset_resource::AssetSourceResource;
 use crate::process::ProcessBuilder;
 use crate::surface::SurfaceResource;
 use crate::wgpu_render::{setup_wgpu_render_resource, WGPURenderResource};
+use crate::winit_platform::WinitPlatform;
 use crate::winit_surface::{setup_winit_resource, WinitSurface};
 
 #[cfg(target_family = "wasm")]
@@ -21,11 +22,30 @@ pub mod web {
     }
 }
 
+/// Backbone for the application flow. Actual functionality is provided by 
+/// implementing capability trait, such as [SurfaceProvidingPlatform] and 
+/// [AsyncPlatform].
 pub trait Platform {
+    //type Executor;
+
+    /*fn spawn_local<F, Fut>(self, f: F)
+        where Self: Sized,
+              Fut: 'static + Future<Output=()>,
+              F: FnOnce(Self) -> Fut;*/
+    
+    //fn async_executor(&self) -> Self::Executor;
+
     fn spawn_local<F, Fut>(self, f: F)
         where Self: Sized,
               Fut: 'static + Future<Output=()>,
               F: FnOnce(Self) -> Fut;
+}
+
+#[async_trait(?Send)]
+pub trait SurfaceProvidingPlatform : Platform {
+    type Surface;
+
+    async fn new_surface() -> Self::Surface;
 }
 
 #[async_trait(? Send)]
@@ -33,22 +53,25 @@ pub trait PlatformWithDefaultSetup {
     type SetupInput: 'static;
     type SetupOutput: 'static;
 
+    #[deprecated]
     async fn setup(&mut self, input: Self::SetupInput) -> Self::SetupOutput;
 }
 
-pub fn detect_platform() -> DefaultPlatform {
+/*pub fn detect_platform() -> DefaultPlatform {
     DefaultPlatform {
         #[cfg(target_family = "wasm")]
         handle_canvas: None,
     }
-}
+}*/
 
-pub struct DefaultPlatform {
+/*pub struct DefaultPlatform {
     #[cfg(target_family = "wasm")]
     handle_canvas: Option<fn(web_sys::HtmlCanvasElement) -> web::Placement>,
 }
 
-impl Platform for DefaultPlatform {
+impl Platform for DefaultPlatform {}
+
+impl AsyncPlatform for DefaultPlatform {
     #[cfg(target_family = "wasm")]
     fn spawn_local<F, Fut>(self, f: F)
         where Self: Sized,
@@ -79,9 +102,15 @@ impl DefaultPlatform {
 #[cfg(not(target_family = "wasm"))]
 type DefaultPlatformAssetSource = assets::source::desktop_fs::DirectoryAssetSource;
 #[cfg(target_family = "wasm")]
-type DefaultPlatformAssetSource = assets::source::web_request::WebRequestAssetSource;
+type DefaultPlatformAssetSource = assets::source::web_request::WebRequestAssetSource;*/
 
-#[cfg(not(target_family = "wasm"))]
+type DefaultPlatform = WinitPlatform;
+
+pub fn new_default_platform() -> DefaultPlatform {
+    WinitPlatform::new()
+}
+
+/*#[cfg(not(target_family = "wasm"))]
 fn new_default_platform_asset_source() -> DefaultPlatformAssetSource {
     use assets::source::desktop_fs::DirectoryAssetSource;
 
@@ -148,6 +177,7 @@ pub trait SetupPlatformDefaultsExt<R, P, I>
     where P: PlatformWithDefaultSetup,
           R: 'static + IntoShape<P::SetupInput, I>,
           R::Remainder: Concat {
+    #[deprecated]
     async fn setup_platform_defaults(self, platform: &mut P) -> ProcessBuilder<<R::Remainder as Concat>::Concatenated<P::SetupOutput>>;
 }
 
@@ -159,4 +189,4 @@ impl<R, P, I> SetupPlatformDefaultsExt<R, P, I> for ProcessBuilder<R>
     async fn setup_platform_defaults(self, platform: &mut P) -> ProcessBuilder<<R::Remainder as Concat>::Concatenated<P::SetupOutput>> {
         self.setup_async(|input| platform.setup(input)).await
     }
-}
+}*/

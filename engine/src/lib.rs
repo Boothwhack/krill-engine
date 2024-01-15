@@ -4,6 +4,7 @@ pub mod process;
 pub mod resources;
 pub mod surface;
 pub mod wgpu_render;
+pub mod winit_platform;
 pub mod winit_surface;
 
 pub use assets;

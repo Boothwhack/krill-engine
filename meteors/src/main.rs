@@ -1,4 +1,4 @@
-use engine::platform::{detect_platform, Platform, SetupPlatformDefaultsExt};
+use engine::platform::{detect_platform, Platform, SetupPlatformDefaultsExt, AsyncPlatform};
 use engine::process::ProcessBuilder;
 use engine::surface::RunExt;
 
